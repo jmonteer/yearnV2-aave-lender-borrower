@@ -38,12 +38,19 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
     
-    ISwap public router;
-    IStakedAave public stkAave;
+    ISwap public constant sushiswap =
+        ISwap(address(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F));
+    ISwap public constant uniswap =
+        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
+    ISwap public router =
+        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));    
+    
+    // TODO: check this does not change
+    IStakedAave public constant stkAave = IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
     IAToken public aToken;
     IVault public yVault;
     IERC20 public investmentToken;
-
+    IVariableDebtToken public variableDebtToken;
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
@@ -70,8 +77,14 @@ contract Strategy is BaseStrategy {
         // maxReportDelay = 6300;
         // profitFactor = 100;
         // debtThreshold = 0;
-
-        // TODO: Set up referral
+        yVault = IVault(_yVault);
+        investmentToken = IERC20(IVault(_yVault).token());
+        (address _aToken, , ) = protocolDataProvider.getReserveTokensAddresses(address(want));
+        aToken = IAToken(_aToken);
+        (, , address _variableDebtToken) = protocolDataProvider.getReserveTokensAddresses(address(investmentToken));
+        variableDebtToken = IVariableDebtToken(_variableDebtToken);
+        
+        isIncentivised = _isIncentivised;
         referral = DEFAULT_REFERRAL;
     }
 
@@ -102,9 +115,9 @@ contract Strategy is BaseStrategy {
         isIncentivised = _isIncentivised;
     }
 
-    function setReferralCode(uint16 _customReferral) external onlyAuthorized {
-        require(_customReferral != 0, "!invalid referral code");
-        customReferral = _customReferral;
+    function setReferralCode(uint16 _referral) external onlyAuthorized {
+        require(_referral != 0, "!invalid referral code");
+        referral = _referral;
     }
 
 
@@ -153,20 +166,38 @@ contract Strategy is BaseStrategy {
 
         // TODO: check balance > _debtOutstanding
         // TODO: set availableCollateral
-
+        uint256 wantBalance = _balanceOfWant();
+        if(_debtOutstanding >= wantBalance){
+            return;
+        }
         // TODO: deposit 100% of available collateral
-
+        uint256 amountToDeposit = wantBalance.sub(_debtOutstanding);
+        _depositToAave(amountToDeposit);
+        _borrowInvestmentToken(1e18);
+        _depositInYVault();
+        
+        return;
+        // ------------ TODO --------------
         // TODO: get current lev ratio
-
+        uint256 currentLTV; 
+        uint256 targetLTV;
+        uint256 liquidationLTV;
         // decide in which range we are and act accordingly: 
             // SUBOPTIMAL(borrow) (from 0 to 40% LTV)
             // HEALTHY(do nothing) (from 40% to 60% LTV)
             // UNHEALTHY(repay) (from 60% to INF LTV)
 
+        if(currentLTV > targetLTV) {
         // TODO: check if it is in SUBOPTIMAL range && borrowing costs are acceptable
             // take on more debt
+            uint256 amountToBorrow = 0;
+            _borrowInvestmentToken(amountToBorrow);
+            _depositInYVault();
             // TODO: borrow investable asset
             // TODO: deposit in yVault
+        } else if(currentLTV < liquidationLTV){
+
+        }
 
         // TODO: check if it is in UNHEALTHY range OR borrowing costs are unacceptable
             // repay debt
@@ -221,6 +252,42 @@ contract Strategy is BaseStrategy {
     // }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
+    function _borrowInvestmentToken(uint256 amount) internal {
+        amount = Math.min(amount, _maxBorrowableInWant());
+        if(amount == 0) {
+            return;
+        }
+        _lendingPool().borrow(address(investmentToken), amount, 2, referral, address(this));
+    }
+
+    function _repayInvestmentTokenDebt(uint256 amount) internal {
+        ILendingPool lp = _lendingPool();
+        
+        (, uint256 debtInETH, , , , ) =  lp.getUserAccountData(address(this));
+        
+        uint256 balance = _balanceOfInvestmentToken();
+        amount = Math.min(amount, balance);
+
+        uint256 toRepay = Math.min(debtInETH, _investmentTokenToETH(amount));
+        // TODO: check which are the units of the repayAmount
+        lp.repay(address(investmentToken), toRepay, 2, address(this));
+    }
+
+    function _investmentTokenToETH(uint256 amount) internal view returns (uint256) {
+        // TODO: Make it generic to other investment tokens (currently 1:1)
+        return amount;
+    }
+
+    function _ethToInvestToken(uint256 amount) internal view returns (uint256) {
+        // TODO: Make it generic to other investment tokens (currently 1:1)
+        return amount;
+    }
+
+    function _depositInYVault() internal {
+        _checkAllowance(address(yVault), address(investmentToken), _balanceOfInvestmentToken());
+        yVault.deposit();
+    }
+
     function _claimRewards() internal {
         if(isIncentivised) {
             // redeem AAVE from stkAave
@@ -372,6 +439,13 @@ contract Strategy is BaseStrategy {
         // TODO: sell investmentToken for Want
     }
     // ----------------- INTERNAL CALCS -----------------
+    function _maxBorrowableInWant() internal view returns (uint256) {
+        (, , uint256 availableBorrowsETH, , , ) = _lendingPool().getUserAccountData(address(this));
+        // TODO: check liquidity aave + convert to want
+        return availableBorrowsETH;
+    }
+
+
 
     function _AAVEtoWant(uint256 _amount) internal view returns (uint256) {
         if(_amount == 0) {
@@ -400,9 +474,13 @@ contract Strategy is BaseStrategy {
             return 0;
         }
 
-        address[] memory path;
+        // NOTE: 1:1
+        if(address(want) == address(investmentToken)) {
+            return _amount;
+        }
 
-        if(address(want) == address(WETH)) {
+        address[] memory path;
+        if(address(want) == address(WETH) || address(investmentToken) == address(WETH)) {
             path = new address[](2);
             path[0] = address(investmentToken);
             path[1] = address(want);
@@ -421,12 +499,18 @@ contract Strategy is BaseStrategy {
         return want.balanceOf(address(this));
     }
 
+    function _balanceOfInvestmentToken() internal view returns (uint256) {
+        return investmentToken.balanceOf(address(this));
+    }
+
     function _balanceOfAToken() internal view returns (uint256) {
         return aToken.balanceOf(address(this));
     }
 
     function _balanceOfDebt() internal view returns (uint256) {
         // TODO: return liabilities
+        (, uint256 ethDebt, , , , ) = _lendingPool().getUserAccountData(address(this));
+        return _ethToInvestToken(ethDebt);
     }
 
     function _balanceOfYShares() internal view returns (uint256) {

@@ -18,6 +18,12 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+import "./interfaces/aave/IAToken.sol";
+import "./interfaces/aave/IAaveIncentivesController.sol";
+import "./interfaces/aave/ILendingPool.sol";
+import "./interfaces/aave/ILendingPoolAddressesProvider.sol";
+import "./interfaces/aave/IStakedAave.sol";
+import "./interfaces/aave/IVariableDebtToken.sol";
 import "./interfaces/ISwap.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/IWETH.sol";
@@ -35,7 +41,6 @@ contract Strategy is BaseStrategy {
     IAToken public aToken;
     IVault public yVault;
     IERC20 public investmentToken;
-    
 
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
@@ -47,11 +52,9 @@ contract Strategy is BaseStrategy {
     // TODO: check if protocol data provider can change
     IProtocolDataProvider public constant protocolDataProvider = IProtocolDataProvider(address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d));
 
-
     constructor(
         address _vault,
-        address _yVault,
-        
+        address _yVault
     ) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
         // maxReportDelay = 6300;

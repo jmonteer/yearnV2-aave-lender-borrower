@@ -39,12 +39,6 @@ def keeper(accounts):
 
 
 @pytest.fixture
-def token():
-    token_address = "0x6b175474e89094c44da98b954eedeac495271d0f"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
-    yield Contract(token_address)
-
-
-@pytest.fixture
 def amount(accounts, token, user):
     amount = 10_000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
@@ -55,9 +49,33 @@ def amount(accounts, token, user):
 
 
 @pytest.fixture
+def yvETH():
+    yield Contract("0xa9fE4601811213c340e850ea305481afF02f5b28")
+
+
+@pytest.fixture
 def weth():
-    token_address = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
-    yield Contract(token_address)
+    yield Contract("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
+
+
+@pytest.fixture
+def wbtc():
+    yield Contract("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599")
+
+
+@pytest.fixture
+def wbtc_whale(accounts):
+    yield accounts.at("0x40ec5B33f54e0E8A33A975908C5BA1c14e5BbbDf", force=True)
+
+
+@pytest.fixture
+def weth_whale(accounts):
+    yield accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
+
+
+@pytest.fixture
+def token(wbtc):
+    yield wbtc
 
 
 @pytest.fixture
@@ -78,8 +96,8 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov):
-    strategy = strategist.deploy(Strategy, vault)
+def strategy(strategist, keeper, vault, Strategy, gov, yvETH):
+    strategy = strategist.deploy(Strategy, vault, yvETH, True)
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy

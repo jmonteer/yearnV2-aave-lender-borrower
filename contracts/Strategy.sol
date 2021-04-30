@@ -10,12 +10,17 @@ import {
     BaseStrategy,
     StrategyParams
 } from "@yearnvaults/contracts/BaseStrategy.sol";
+
 import {
     SafeERC20,
     SafeMath,
     IERC20,
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
+
+import "./interfaces/ISwap.sol";
+import "./interfaces/IVault.sol";
+import "./interfaces/IWETH.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -24,12 +29,24 @@ contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
+    
+    ISwap public router;
 
     IAToken public aToken;
     IVault public yVault;
+    IERC20 public investmentToken;
+    
 
-    ISwap public router;
+    address public constant WETH =
+        address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    // TODO: check if AAVE token can change
+    address public constant AAVE =
+        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+
+    // TODO: check if protocol data provider can change
     IProtocolDataProvider public constant protocolDataProvider = IProtocolDataProvider(address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d));
+
 
     constructor(
         address _vault,

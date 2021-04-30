@@ -16,7 +16,12 @@ interface IVariableDebtToken is IScaledBalanceToken {
      * @param value The amount to be minted
      * @param index The last index of the reserve
      **/
-    event Mint(address indexed from, address indexed onBehalfOf, uint256 value, uint256 index);
+    event Mint(
+        address indexed from,
+        address indexed onBehalfOf,
+        uint256 value,
+        uint256 index
+    );
 
     /**
      * @dev Mints debt token to the `onBehalfOf` address

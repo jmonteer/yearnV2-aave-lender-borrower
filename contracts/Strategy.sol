@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
-// Feel free to change the license, but this is what we use
-
-// Feel free to change this version of Solidity. We support >=0.6.0 <0.7.0;
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-// These are the core Yearn libraries
-import {
-    BaseStrategy,
-    StrategyParams
-} from "@yearnvaults/contracts/BaseStrategy.sol";
+import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 
 import {
@@ -19,6 +12,7 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
+import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/ISwap.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/IVault.sol";
@@ -29,37 +23,34 @@ import "./interfaces/aave/IVariableDebtToken.sol";
 import "./interfaces/aave/IProtocolDataProvider.sol";
 import "./interfaces/aave/IAaveIncentivesController.sol";
 import "./interfaces/aave/ILendingPoolAddressesProvider.sol";
-
-// Import interfaces for many popular DeFi projects, or add your own!
-//import "../interfaces/<protocol>/<Interface>.sol";
+import "./interfaces/aave/IReserveInterestRateStrategy.sol";
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
-    
+
     ISwap public constant sushiswap =
         ISwap(address(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F));
     ISwap public constant uniswap =
         ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
     ISwap public router =
-        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));    
-    
-    // TODO: check this does not change
-    IStakedAave public constant stkAave = IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
+
+    IStakedAave public constant stkAave =
+        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+    IProtocolDataProvider public constant protocolDataProvider =
+        IProtocolDataProvider(
+            address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d)
+        );
     IAToken public aToken;
     IVault public yVault;
     IERC20 public investmentToken;
     IVariableDebtToken public variableDebtToken;
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-
-    // TODO: check if AAVE token can change
     address public constant AAVE =
         address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-
-    // TODO: check if protocol data provider can change
-    IProtocolDataProvider public constant protocolDataProvider = IProtocolDataProvider(address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d));
 
     bool public isIncentivised;
 
@@ -80,11 +71,15 @@ contract Strategy is BaseStrategy {
         // debtThreshold = 0;
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
-        (address _aToken, , ) = protocolDataProvider.getReserveTokensAddresses(address(want));
+        (address _aToken, , ) =
+            protocolDataProvider.getReserveTokensAddresses(address(want));
         aToken = IAToken(_aToken);
-        (, , address _variableDebtToken) = protocolDataProvider.getReserveTokensAddresses(address(investmentToken));
+        (, , address _variableDebtToken) =
+            protocolDataProvider.getReserveTokensAddresses(
+                address(investmentToken)
+            );
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
-        
+
         isIncentivised = _isIncentivised;
         referral = DEFAULT_REFERRAL;
     }
@@ -92,15 +87,21 @@ contract Strategy is BaseStrategy {
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
 
     function name() external view override returns (string memory) {
-        // Add your own name here, suggestion e.g. "StrategyCreamYFI"
-        return "StrategyAaveLenderBorrower";
+        string memory _want = IOptionalERC20(address(want)).symbol();
+        string memory _lend = string(abi.encodePacked("Lend:", _want));
+        string memory _investmentToken =
+            IOptionalERC20(address(investmentToken)).symbol();
+        string memory _borrow =
+            string(abi.encodePacked("Borrow:", _investmentToken));
+        return string(abi.encodePacked("StrategyAave ", _lend, " ", _borrow));
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return _balanceOfWant()
+        return
+            _balanceOfWant()
                 .add(_balanceOfAToken()) // asset suplied as collateral
                 .add(_investmentTokenToWant(_valueOfInvestment())) // current value of assets deposited in vault
-                .sub(_investmentTokenToWant(_balanceOfDebt())); // liabilities 
+                .sub(_investmentTokenToWant(_balanceOfDebt())); // liabilities
     }
 
     function balanceOfAToken() external view returns (uint256) {
@@ -112,7 +113,11 @@ contract Strategy is BaseStrategy {
     function setIsIncentivised(bool _isIncentivised) external onlyAuthorized {
         // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
         // to avoid calling it, we use the OR and lazy evaluation
-        require(!_isIncentivised || address(aToken.getIncentivesController()) != address(0), "!aToken does not have incentives controller set up");
+        require(
+            !_isIncentivised ||
+                address(aToken.getIncentivesController()) != address(0),
+            "!aToken does not have incentives controller set up"
+        );
         isIncentivised = _isIncentivised;
     }
 
@@ -120,7 +125,6 @@ contract Strategy is BaseStrategy {
         require(_referral != 0, "!invalid referral code");
         referral = _referral;
     }
-
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
 
@@ -156,11 +160,7 @@ contract Strategy is BaseStrategy {
                 _profit = 0;
             }
         }
-
-        emit PrepareReturn(_debtPayment, _loss, _profit, _balanceOfWant());
     }
-
-    event PrepareReturn (uint256 debtpayment, uint loss, uint profit, uint balance);
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
         // TODO: Do something to invest excess `want` tokens (from the Vault) into your positions
@@ -169,7 +169,7 @@ contract Strategy is BaseStrategy {
         // TODO: check balance > _debtOutstanding
         // TODO: set availableCollateral
         uint256 wantBalance = _balanceOfWant();
-        if(_debtOutstanding >= wantBalance){
+        if (_debtOutstanding >= wantBalance) {
             return;
         }
         // TODO: deposit 100% of available collateral
@@ -177,34 +177,32 @@ contract Strategy is BaseStrategy {
         _depositToAave(amountToDeposit);
         _borrowInvestmentToken(1e18);
         _depositInYVault();
-        
+
         return;
         // ------------ TODO --------------
         // TODO: get current lev ratio
-        uint256 currentLTV; 
+        uint256 currentLTV;
         uint256 targetLTV;
         uint256 liquidationLTV;
-        // decide in which range we are and act accordingly: 
-            // SUBOPTIMAL(borrow) (from 0 to 40% LTV)
-            // HEALTHY(do nothing) (from 40% to 60% LTV)
-            // UNHEALTHY(repay) (from 60% to INF LTV)
+        // decide in which range we are and act accordingly:
+        // SUBOPTIMAL(borrow) (from 0 to 40% LTV)
+        // HEALTHY(do nothing) (from 40% to 60% LTV)
+        // UNHEALTHY(repay) (from 60% to INF LTV)
 
-        if(currentLTV > targetLTV) {
-        // TODO: check if it is in SUBOPTIMAL range && borrowing costs are acceptable
+        if (currentLTV > targetLTV) {
+            // TODO: check if it is in SUBOPTIMAL range && borrowing costs are acceptable
             // take on more debt
             uint256 amountToBorrow = 0;
             _borrowInvestmentToken(amountToBorrow);
             _depositInYVault();
             // TODO: borrow investable asset
             // TODO: deposit in yVault
-        } else if(currentLTV < liquidationLTV){
-
-        }
+        } else if (currentLTV < liquidationLTV) {}
 
         // TODO: check if it is in UNHEALTHY range OR borrowing costs are unacceptable
-            // repay debt
-            // TODO: withdraw from yVault
-            // TODO: repay debt
+        // repay debt
+        // TODO: withdraw from yVault
+        // TODO: repay debt
     }
 
     function liquidatePosition(uint256 _amountNeeded)
@@ -220,7 +218,7 @@ contract Strategy is BaseStrategy {
         uint256 amountToWithdraw = _amountNeeded;
         // if(balance < _amountNeeded) {
         //     amountToWithdraw = _amountNeeded.sub(balance);
-            
+
         //     // calculate what the ratio is going to be
         //     uint256 aTokenBalance = _balanceOfAToken();
         //     uint256 collateral = aTokenBalance > amountToWithdraw ? aTokenBalance.sub(amountToWithdraw) : 0;
@@ -234,7 +232,7 @@ contract Strategy is BaseStrategy {
         //         _withdrawFromYVault(amountToRepay);
         //         _repayInvestmentTokenDebt(amountToWithdraw);
         // }
-        
+
         _withdrawFromAave(amountToWithdraw);
 
         uint256 totalAssets = _balanceOfWant();
@@ -267,17 +265,23 @@ contract Strategy is BaseStrategy {
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
     function _borrowInvestmentToken(uint256 amount) internal {
         amount = Math.min(amount, _maxBorrowableInWant());
-        if(amount == 0) {
+        if (amount == 0) {
             return;
         }
-        _lendingPool().borrow(address(investmentToken), amount, 2, referral, address(this));
+        _lendingPool().borrow(
+            address(investmentToken),
+            amount,
+            2,
+            referral,
+            address(this)
+        );
     }
 
     function _repayInvestmentTokenDebt(uint256 amount) internal {
         ILendingPool lp = _lendingPool();
-        
-        (, uint256 debtInETH, , , , ) =  lp.getUserAccountData(address(this));
-        
+
+        (, uint256 debtInETH, , , , ) = lp.getUserAccountData(address(this));
+
         uint256 balance = _balanceOfInvestmentToken();
         amount = Math.min(amount, balance);
 
@@ -286,7 +290,11 @@ contract Strategy is BaseStrategy {
         lp.repay(address(investmentToken), toRepay, 2, address(this));
     }
 
-    function _investmentTokenToETH(uint256 amount) internal view returns (uint256) {
+    function _investmentTokenToETH(uint256 amount)
+        internal
+        view
+        returns (uint256)
+    {
         // TODO: Make it generic to other investment tokens (currently 1:1)
         return amount;
     }
@@ -297,15 +305,20 @@ contract Strategy is BaseStrategy {
     }
 
     function _depositInYVault() internal {
-        _checkAllowance(address(yVault), address(investmentToken), _balanceOfInvestmentToken());
+        _checkAllowance(
+            address(yVault),
+            address(investmentToken),
+            _balanceOfInvestmentToken()
+        );
         yVault.deposit();
     }
 
     function _claimRewards() internal {
-        if(isIncentivised) {
+        if (isIncentivised) {
             // redeem AAVE from stkAave
-            uint256 stkAaveBalance = IERC20(address(stkAave)).balanceOf(address(this));
-            if(stkAaveBalance > 0 && _checkCooldown()) {
+            uint256 stkAaveBalance =
+                IERC20(address(stkAave)).balanceOf(address(this));
+            if (stkAaveBalance > 0 && _checkCooldown()) {
                 stkAave.redeem(address(this), stkAaveBalance);
             }
 
@@ -316,13 +329,21 @@ contract Strategy is BaseStrategy {
             // claim rewards
             address[] memory assets = new address[](1);
             assets[0] = address(aToken);
-            uint256 pendingRewards = _incentivesController().getRewardsBalance(assets, address(this));
-            if(pendingRewards > 0) {
-                _incentivesController().claimRewards(assets, pendingRewards, address(this));
+            uint256 pendingRewards =
+                _incentivesController().getRewardsBalance(
+                    assets,
+                    address(this)
+                );
+            if (pendingRewards > 0) {
+                _incentivesController().claimRewards(
+                    assets,
+                    pendingRewards,
+                    address(this)
+                );
             }
 
             // request start of cooldown period
-            if(IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
+            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
                 stkAave.cooldown();
             }
         }
@@ -344,17 +365,21 @@ contract Strategy is BaseStrategy {
 
         uint256 liquidity = want.balanceOf(address(aToken));
         uint256 toWithdraw = Math.min(amount.sub(looseBalance), liquidity);
-        if(toWithdraw > 0) {
-            _checkAllowance(address(_lendingPool()), address(aToken), toWithdraw);
+        if (toWithdraw > 0) {
+            _checkAllowance(
+                address(_lendingPool()),
+                address(aToken),
+                toWithdraw
+            );
             _lendingPool().withdraw(address(want), toWithdraw, address(this));
         }
-    
+
         looseBalance = _balanceOfWant();
         return looseBalance;
     }
 
     function _depositToAave(uint256 amount) internal {
-        if(amount == 0) {
+        if (amount == 0) {
             return;
         }
 
@@ -364,24 +389,32 @@ contract Strategy is BaseStrategy {
     }
 
     function _checkCooldown() internal view returns (bool) {
-        if(!isIncentivised) {
+        if (!isIncentivised) {
             return false;
         }
 
-        uint256 cooldownStartTimestamp = IStakedAave(stkAave).stakersCooldowns(address(this));
+        uint256 cooldownStartTimestamp =
+            IStakedAave(stkAave).stakersCooldowns(address(this));
         uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
         uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        if(block.timestamp >= cooldownStartTimestamp.add(COOLDOWN_SECONDS)) {
-            return block.timestamp.sub(cooldownStartTimestamp.add(COOLDOWN_SECONDS)) <= UNSTAKE_WINDOW || cooldownStartTimestamp == 0;
+        if (block.timestamp >= cooldownStartTimestamp.add(COOLDOWN_SECONDS)) {
+            return
+                block.timestamp.sub(
+                    cooldownStartTimestamp.add(COOLDOWN_SECONDS)
+                ) <=
+                UNSTAKE_WINDOW ||
+                cooldownStartTimestamp == 0;
         }
 
         return false;
     }
 
-    function _checkAllowance(address _contract, address _token, uint256 _amount) internal {
-        if (
-            IERC20(_token).allowance(address(this), _contract) < _amount
-        ) {
+    function _checkAllowance(
+        address _contract,
+        address _token,
+        uint256 _amount
+    ) internal {
+        if (IERC20(_token).allowance(address(this), _contract) < _amount) {
             IERC20(_token).safeApprove(_contract, 0);
             IERC20(_token).safeApprove(_contract, type(uint256).max);
         }
@@ -394,7 +427,7 @@ contract Strategy is BaseStrategy {
 
         address[] memory path;
 
-        if(address(want) == address(WETH)) {
+        if (address(want) == address(WETH)) {
             path = new address[](2);
             path[0] = address(AAVE);
             path[1] = address(want);
@@ -407,13 +440,7 @@ contract Strategy is BaseStrategy {
 
         _checkAllowance(address(router), address(AAVE), _amount);
 
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            path,
-            address(this),
-            now
-        );
+        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
     }
 
     function _sellInvestmentForWant(uint256 _amount) internal {
@@ -422,12 +449,15 @@ contract Strategy is BaseStrategy {
         }
 
         // NOTE: 1:1
-        if(address(want) == address(investmentToken)) {
+        if (address(want) == address(investmentToken)) {
             return;
         }
 
         address[] memory path;
-        if(address(want) == address(WETH) || address(investmentToken) == address(WETH)) {
+        if (
+            address(want) == address(WETH) ||
+            address(investmentToken) == address(WETH)
+        ) {
             path = new address[](2);
             path[0] = address(investmentToken);
             path[1] = address(want);
@@ -440,45 +470,88 @@ contract Strategy is BaseStrategy {
 
         _checkAllowance(address(router), path[0], _amount);
 
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            path,
-            address(this),
-            now
-        );
+        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
     }
 
     function _takeVaultProfit() internal {
         // TODO: implement
         uint256 _debt = _balanceOfDebt();
         uint256 _valueInVault = _valueOfInvestment();
-        if(_debt >= _valueInVault) {
+        if (_debt >= _valueInVault) {
             return;
         }
 
         uint256 profit = _valueInVault.sub(_debt);
         uint256 ySharesToWithdraw = _investmentToYShares(profit);
-        if(ySharesToWithdraw > 0) {
+        if (ySharesToWithdraw > 0) {
             yVault.withdraw(ySharesToWithdraw);
             _sellInvestmentForWant(_balanceOfInvestmentToken());
         }
     }
+
     // ----------------- INTERNAL CALCS -----------------
+    function borrowingRate(uint256 _additionalBorrow)
+        external
+        view
+        returns (uint256)
+    {
+        (
+            uint256 availableLiquidity,
+            uint256 totalStableDebt,
+            uint256 totalVariableDebt,
+            ,
+            uint256 variableBorrowRate,
+            ,
+            uint256 averageStableBorrowRate,
+            ,
+            ,
+
+        ) = protocolDataProvider.getReserveData(address(investmentToken));
+
+        // If we are not adding anything, variable borrow rate is enough
+        if (_additionalBorrow == 0) {
+            return variableBorrowRate;
+        }
+
+        DataTypes.ReserveData memory reserveData =
+            _lendingPool().getReserveData(address(investmentToken));
+        uint256 newTotalVariableDebt = totalVariableDebt.add(_additionalBorrow);
+
+        (, , , , uint256 reserveFactor, , , , , ) =
+            protocolDataProvider.getReserveConfigurationData(address(want));
+
+        (, , uint256 newVariableBorrowRate) =
+            IReserveInterestRateStrategy(
+                reserveData
+                    .interestRateStrategyAddress
+            )
+                .calculateInterestRates(
+                address(investmentToken),
+                availableLiquidity,
+                totalStableDebt,
+                newTotalVariableDebt,
+                averageStableBorrowRate,
+                reserveFactor
+            );
+
+        return newVariableBorrowRate;
+    }
+
     function _maxBorrowableInWant() internal view returns (uint256) {
-        (, , uint256 availableBorrowsETH, , , ) = _lendingPool().getUserAccountData(address(this));
+        (, , uint256 availableBorrowsETH, , , ) =
+            _lendingPool().getUserAccountData(address(this));
         // TODO: check liquidity aave + convert to want
         return availableBorrowsETH;
     }
 
     function _AAVEtoWant(uint256 _amount) internal view returns (uint256) {
-        if(_amount == 0) {
+        if (_amount == 0) {
             return 0;
         }
 
         address[] memory path;
 
-        if(address(want) == address(WETH)) {
+        if (address(want) == address(WETH)) {
             path = new address[](2);
             path[0] = address(AAVE);
             path[1] = address(want);
@@ -493,18 +566,25 @@ contract Strategy is BaseStrategy {
         return amounts[amounts.length - 1];
     }
 
-    function _investmentTokenToWant(uint256 _amount) internal view returns (uint256) {
-        if(_amount == 0) {
+    function _investmentTokenToWant(uint256 _amount)
+        internal
+        view
+        returns (uint256)
+    {
+        if (_amount == 0) {
             return 0;
         }
 
         // NOTE: 1:1
-        if(address(want) == address(investmentToken)) {
+        if (address(want) == address(investmentToken)) {
             return _amount;
         }
 
         address[] memory path;
-        if(address(want) == address(WETH) || address(investmentToken) == address(WETH)) {
+        if (
+            address(want) == address(WETH) ||
+            address(investmentToken) == address(WETH)
+        ) {
             path = new address[](2);
             path[0] = address(investmentToken);
             path[1] = address(want);
@@ -533,7 +613,8 @@ contract Strategy is BaseStrategy {
 
     function _balanceOfDebt() internal view returns (uint256) {
         // TODO: return liabilities
-        (, uint256 ethDebt, , , , ) = _lendingPool().getUserAccountData(address(this));
+        (, uint256 ethDebt, , , , ) =
+            _lendingPool().getUserAccountData(address(this));
         return _ethToInvestToken(ethDebt);
     }
 
@@ -546,19 +627,26 @@ contract Strategy is BaseStrategy {
     }
 
     function _valueOfInvestment() internal view returns (uint256) {
-        return _balanceOfYShares().mul(_getPricePerYShare()).div(10 ** yVault.decimals());
+        return
+            _balanceOfYShares().mul(_getPricePerYShare()).div(
+                10**yVault.decimals()
+            );
     }
 
-    function _investmentToYShares(uint256 amount) internal view returns (uint256) {
-        return amount.mul(10 ** yVault.decimals()).div(_getPricePerYShare());
+    function _investmentToYShares(uint256 amount)
+        internal
+        view
+        returns (uint256)
+    {
+        return amount.mul(10**yVault.decimals()).div(_getPricePerYShare());
     }
 
     function _getCurrentLTV() internal view returns (uint256) {
         // TODO: get current debt
         // TODO: get current collateral
-        uint256 _debt; 
+        uint256 _debt;
         uint256 _collateral;
-        return _debt.mul(10 ** yVault.decimals()).div(_collateral); // same decimals that want
+        return _debt.mul(10**yVault.decimals()).div(_collateral); // same decimals that want
     }
 
     function _getTargetLTV() internal view returns (uint256) {
@@ -568,38 +656,29 @@ contract Strategy is BaseStrategy {
     function _getWarningLTV() internal view returns (uint256) {
         return _getLiquidationLTV().mul(warningLTVMultiplier).div(MAX_BPS);
     }
+
     // ----------------- INTERNAL SUPPORT GETTERS -----------------
 
-    function _getLiquidationLTV() internal view returns (uint256) {
-
-    }
+    function _getLiquidationLTV() internal view returns (uint256) {}
 
     function _lendingPool() internal view returns (ILendingPool lendingPool) {
-        lendingPool = ILendingPool(protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool());
+        lendingPool = ILendingPool(
+            protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()
+        );
     }
 
-    function _incentivesController() internal view returns (IAaveIncentivesController) {
-        if(isIncentivised) {
+    function _incentivesController()
+        internal
+        view
+        returns (IAaveIncentivesController)
+    {
+        if (isIncentivised) {
             return aToken.getIncentivesController();
         } else {
             return IAaveIncentivesController(0);
         }
     }
 
-
-    // Override this to add all tokens/tokenized positions this contract manages
-    // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
-    // NOTE: Do *not* include `want`, already included in `sweep` below
-    //
-    // Example:
-    //
-    //    function protectedTokens() internal override view returns (address[] memory) {
-    //      address[] memory protected = new address[](3);
-    //      protected[0] = tokenA;
-    //      protected[1] = tokenB;
-    //      protected[2] = tokenC;
-    //      return protected;
-    //    }
     function protectedTokens()
         internal
         view

@@ -1,7 +1,7 @@
+// SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
 
 interface IWETH {
-
     // ERC20 Optional Views
     function name() external view returns (string memory);
 
@@ -10,31 +10,38 @@ interface IWETH {
     function decimals() external view returns (uint8);
 
     // Views
-    function totalSupply() external view returns (uint);
+    function totalSupply() external view returns (uint256);
 
-    function balanceOf(address owner) external view returns (uint);
+    function balanceOf(address owner) external view returns (uint256);
 
-    function allowance(address owner, address spender) external view returns (uint);
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256);
 
     // Mutative functions
-    function transfer(address to, uint value) external returns (bool);
+    function transfer(address to, uint256 value) external returns (bool);
 
-    function approve(address spender, uint value) external returns (bool);
+    function approve(address spender, uint256 value) external returns (bool);
 
     function transferFrom(
         address from,
         address to,
-        uint value
+        uint256 value
     ) external returns (bool);
 
     // WETH-specific functions.
     function deposit() external payable;
 
-    function withdraw(uint amount) external;
+    function withdraw(uint256 amount) external;
 
     // Events
-    event Transfer(address indexed from, address indexed to, uint value);
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Deposit(address indexed to, uint amount);
-    event Withdrawal(address indexed to, uint amount);
-} 
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
+    event Deposit(address indexed to, uint256 amount);
+    event Withdrawal(address indexed to, uint256 amount);
+}

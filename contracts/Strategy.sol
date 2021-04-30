@@ -10,6 +10,7 @@ import {
     BaseStrategy,
     StrategyParams
 } from "@yearnvaults/contracts/BaseStrategy.sol";
+import "@openzeppelin/contracts/math/Math.sol";
 
 import {
     SafeERC20,
@@ -18,15 +19,16 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
-import "./interfaces/aave/IAToken.sol";
-import "./interfaces/aave/IAaveIncentivesController.sol";
-import "./interfaces/aave/ILendingPool.sol";
-import "./interfaces/aave/ILendingPoolAddressesProvider.sol";
-import "./interfaces/aave/IStakedAave.sol";
-import "./interfaces/aave/IVariableDebtToken.sol";
 import "./interfaces/ISwap.sol";
-import "./interfaces/IVault.sol";
 import "./interfaces/IWETH.sol";
+import "./interfaces/IVault.sol";
+import "./interfaces/aave/IAToken.sol";
+import "./interfaces/aave/IStakedAave.sol";
+import "./interfaces/aave/ILendingPool.sol";
+import "./interfaces/aave/IVariableDebtToken.sol";
+import "./interfaces/aave/IProtocolDataProvider.sol";
+import "./interfaces/aave/IAaveIncentivesController.sol";
+import "./interfaces/aave/ILendingPoolAddressesProvider.sol";
 
 // Import interfaces for many popular DeFi projects, or add your own!
 //import "../interfaces/<protocol>/<Interface>.sol";
@@ -37,7 +39,7 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     
     ISwap public router;
-
+    IStakedAave public stkAave;
     IAToken public aToken;
     IVault public yVault;
     IERC20 public investmentToken;
@@ -52,9 +54,17 @@ contract Strategy is BaseStrategy {
     // TODO: check if protocol data provider can change
     IProtocolDataProvider public constant protocolDataProvider = IProtocolDataProvider(address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d));
 
+    bool public isIncentivised;
+
+    uint16 referral;
+
+    uint256 public targetLTVMultiplier = 10_000;
+    uint256 internal constant MAX_BPS = 10_000; // 100%
+
     constructor(
         address _vault,
-        address _yVault
+        address _yVault,
+        bool _isIncentivised
     ) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
         // maxReportDelay = 6300;
@@ -190,7 +200,7 @@ contract Strategy is BaseStrategy {
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
 
-    function startCooldown() external management {
+    function startCooldown() external onlyStrategist {
         // for emergency cases
         IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
     }
@@ -324,11 +334,11 @@ contract Strategy is BaseStrategy {
 
         if(address(want) == address(WETH)) {
             path = new address[](2);
-            path[0] = address(investment);
+            path[0] = address(investmentToken);
             path[1] = address(want);
         } else {
             path = new address[](3);
-            path[0] = address(investment);
+            path[0] = address(investmentToken);
             path[1] = address(WETH);
             path[2] = address(want);
         }
@@ -342,6 +352,13 @@ contract Strategy is BaseStrategy {
             address(this),
             now
         );
+    }
+
+    function _takeVaultProfit() internal {
+        // TODO: implement
+        // TODO: calculate profit
+        // TODO: withdraw profit
+        // TODO: sell investmentToken for Want
     }
     // ----------------- INTERNAL CALCS -----------------
 
@@ -376,11 +393,11 @@ contract Strategy is BaseStrategy {
 
         if(address(want) == address(WETH)) {
             path = new address[](2);
-            path[0] = address(investment);
+            path[0] = address(investmentToken);
             path[1] = address(want);
         } else {
             path = new address[](3);
-            path[0] = address(investment);
+            path[0] = address(investmentToken);
             path[1] = address(WETH);
             path[2] = address(want);
         }
@@ -418,11 +435,13 @@ contract Strategy is BaseStrategy {
     function _getCurrentLTV() internal view returns (uint256) {
         // TODO: get current debt
         // TODO: get current collateral
-        return _debt.mul(decimals).div(collateral);
+        uint256 _debt; 
+        uint256 _collateral;
+        return _debt.mul(10 ** yVault.decimals()).div(_collateral); // same decimals that want
     }
 
     function _getTargetLTV() internal view returns (uint256) {
-        return _getLiquidationLTV().mul(targetRatioMultiplier).div(MAX_BPS);
+        return _getLiquidationLTV().mul(targetLTVMultiplier).div(MAX_BPS);
     }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------

@@ -16,11 +16,11 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     chain.mine(1)
 
     # Send some profit to yvETH
-    weth.transfer(yvETH, Wei("20 ether"), {"from": weth_whale})
+    weth.transfer(yvETH, Wei("2000 ether"), {"from": weth_whale})
     strategy.harvest({"from": gov})
 
     # We should have profit after getting some profit from yvETH
-    assert vault.strategies(strategy).dict()["totalProfit"] > 0
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
 
     # Enough sleep for profit to be free

@@ -56,8 +56,8 @@ contract Strategy is BaseStrategy {
 
     bool public isIncentivised;
 
-    uint16 referral;
-
+    uint16 internal referral;
+    uint16 internal DEFAULT_REFERRAL = 179;
     uint256 public targetLTVMultiplier = 10_000;
     uint256 internal constant MAX_BPS = 10_000; // 100%
 
@@ -72,7 +72,7 @@ contract Strategy is BaseStrategy {
         // debtThreshold = 0;
 
         // TODO: Set up referral
-
+        referral = DEFAULT_REFERRAL;
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
@@ -94,7 +94,18 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- SETTERS -----------------
+    // for the management to activate / deactivate incentives functionality
+    function setIsIncentivised(bool _isIncentivised) external onlyAuthorized {
+        // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
+        // to avoid calling it, we use the OR and lazy evaluation
+        require(!_isIncentivised || address(aToken.getIncentivesController()) != address(0), "!aToken does not have incentives controller set up");
+        isIncentivised = _isIncentivised;
+    }
 
+    function setReferralCode(uint16 _customReferral) external onlyAuthorized {
+        require(_customReferral != 0, "!invalid referral code");
+        customReferral = _customReferral;
+    }
 
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -200,7 +211,7 @@ contract Strategy is BaseStrategy {
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
 
-    function startCooldown() external onlyStrategist {
+    function startCooldown() external onlyAuthorized {
         // for emergency cases
         IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
     }

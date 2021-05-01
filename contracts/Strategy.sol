@@ -190,10 +190,10 @@ contract Strategy is BaseStrategy {
         // TODO: check if there is any reason to now deposit collateral to aave
         uint256 amountToDeposit = wantBalance.sub(_debtOutstanding);
         _depositToAave(amountToDeposit);
-        _borrowInvestmentToken(1e18);
-        _depositInYVault();
+        // _borrowInvestmentToken(1e18);
+        // _depositInYVault();
 
-        return;
+        // return;
         // ------------ TODO --------------
         // TODO: get current lev ratio
 

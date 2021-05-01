@@ -213,27 +213,41 @@ contract Strategy is BaseStrategy {
         // TODO: Do stuff here to free up to `_amountNeeded` from all positions back into `want`
         // NOTE: Maintain invariant `want.balanceOf(this) >= _liquidatedAmount`
         // NOTE: Maintain invariant `_liquidatedAmount + _loss <= _amountNeeded`
-        uint256 balance = _balanceOfWant();
-        uint256 LTVAfterWithdrawal = 0;
         uint256 amountToWithdraw = _amountNeeded;
-        // if(balance < _amountNeeded) {
-        //     amountToWithdraw = _amountNeeded.sub(balance);
+        
+        // NOTE: the ltvAfterWithdrawal will remain == 0 if we dont need to take collateral
+        // that way we dont need to calculate current ltv, making this path lighter in terms of gas usage
+        uint256 ltvAfterWithdrawal = 0;
 
-        //     // calculate what the ratio is going to be
-        //     uint256 aTokenBalance = _balanceOfAToken();
-        //     uint256 collateral = aTokenBalance > amountToWithdraw ? aTokenBalance.sub(amountToWithdraw) : 0;
-        //     uint256 debt = _balanceOfDebt();
-        //     LTVAfterWithdrawal = collateral > 0 ? debt.mul(10 ** yVault.decimals()).div(collateral) : 999999999999; // TODO: check inf
-        // }
+        // NOTE: amountNeeded is in want. amountToWithdraw is in want. 
+        // NOTE: we need to repay using InvestmentToken
+        // NOTE: collateral and debt calcs are done in ETH
 
-        // if(LTVAfterWithdrawal > _getWarningLTV()) {
-        //     // UNHEALTHY RANGE
-        //         uint256 amountToRepay = amountToWithdraw;
-        //         _withdrawFromYVault(amountToRepay);
-        //         _repayInvestmentTokenDebt(amountToWithdraw);
-        // }
+        uint256 balance = _balanceOfWant();
+        if(balance < _amountNeeded) {
+            // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
+            (uint256 totalCollateralETH, uint256 totalDebtETH, , uint256 currentLiquidationThreshold, , ) = _getAaveUserAccountData();
 
-        _withdrawFromAave(amountToWithdraw);
+            amountToWithdraw = _amountNeeded.sub(balance);
+            uint256 amountToWithdrawETH = _wantToETH(amountToWithdraw);
+            // calculate the collateral that we are leaving after withdrawing
+            uint256 newCollateral = amountToWithdrawETH < totalCollateralETH ? totalCollateralETH.sub(amountToWithdrawETH) : 0;
+            ltvAfterWithdrawal = newCollateral > 0 ? totalDebtETH.mul(10 ** yVault.decimals()).div(newCollateral) : 999999999999; // TODO: check inf
+            // check if the new LTV is in UNHEALTHY range
+            // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
+            // this is not true but the effect will be the same
+            if(ltvAfterWithdrawal > _getWarningLTV(currentLiquidationThreshold)) {
+                // we are in UNHEALTHY RANGE
+                // instead of calculating the optimal ratio, we repay the full amount to be withdrawn
+                // ^ to save gas
+
+                uint256 amountToRepayIT = _wantToInvestmentToken(amountToWithdraw);
+                uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
+                _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
+            }
+
+            _withdrawFromAave(amountToWithdraw); // now we withdraw want from Aave (that was deposited as collateral)
+        }
 
         uint256 totalAssets = _balanceOfWant();
         if (_amountNeeded > totalAssets) {
@@ -242,6 +256,12 @@ contract Strategy is BaseStrategy {
         } else {
             _liquidatedAmount = _amountNeeded;
         }
+    }
+
+    function _withdrawFromYVault(uint256 _amountIT) internal returns (uint256) {
+        // TODO: check available liquidity in vault
+        // no need to check allowance bc the contract == token
+        return yVault.withdraw(_amountIT);
     }
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
@@ -288,20 +308,6 @@ contract Strategy is BaseStrategy {
         uint256 toRepay = Math.min(debtInETH, _investmentTokenToETH(amount));
         // TODO: check which are the units of the repayAmount
         lp.repay(address(investmentToken), toRepay, 2, address(this));
-    }
-
-    function _investmentTokenToETH(uint256 amount)
-        internal
-        view
-        returns (uint256)
-    {
-        // TODO: Make it generic to other investment tokens (currently 1:1)
-        return amount;
-    }
-
-    function _ethToInvestToken(uint256 amount) internal view returns (uint256) {
-        // TODO: Make it generic to other investment tokens (currently 1:1)
-        return amount;
     }
 
     function _depositInYVault() internal {
@@ -420,61 +426,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellAAVEForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        address[] memory path;
-
-        if (address(want) == address(WETH)) {
-            path = new address[](2);
-            path[0] = address(AAVE);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(AAVE);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
-        _checkAllowance(address(router), address(AAVE), _amount);
-
-        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
-    }
-
-    function _sellInvestmentForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        // NOTE: 1:1
-        if (address(want) == address(investmentToken)) {
-            return;
-        }
-
-        address[] memory path;
-        if (
-            address(want) == address(WETH) ||
-            address(investmentToken) == address(WETH)
-        ) {
-            path = new address[](2);
-            path[0] = address(investmentToken);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(investmentToken);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
-        _checkAllowance(address(router), path[0], _amount);
-
-        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
-    }
-
     function _takeVaultProfit() internal {
-        // TODO: implement
         uint256 _debt = _balanceOfDebt();
         uint256 _valueInVault = _valueOfInvestment();
         if (_debt >= _valueInVault) {
@@ -544,6 +496,123 @@ contract Strategy is BaseStrategy {
         return availableBorrowsETH;
     }
 
+    function _balanceOfWant() internal view returns (uint256) {
+        return want.balanceOf(address(this));
+    }
+
+    function _balanceOfInvestmentToken() internal view returns (uint256) {
+        return investmentToken.balanceOf(address(this));
+    }
+
+    function _balanceOfAToken() internal view returns (uint256) {
+        return aToken.balanceOf(address(this));
+    }
+
+    function _balanceOfDebt() internal view returns (uint256) {
+        // TODO: return liabilities
+        (, uint256 ethDebt, , , , ) =
+            _lendingPool().getUserAccountData(address(this));
+        return _ethToInvestmentToken(ethDebt);
+    }
+
+    function _balanceOfYShares() internal view returns (uint256) {
+        return yVault.balanceOf(address(this));
+    }
+
+    function _getPricePerYShare() internal view returns (uint256) {
+        return yVault.pricePerShare();
+    }
+
+    function _valueOfInvestment() internal view returns (uint256) {
+        return
+            _balanceOfYShares().mul(_getPricePerYShare()).div(
+                10**yVault.decimals()
+            );
+    }
+
+    function _investmentToYShares(uint256 amount)
+        internal
+        view
+        returns (uint256)
+    {
+        return amount.mul(10**yVault.decimals()).div(_getPricePerYShare());
+    }
+
+    function _getAaveUserAccountData() internal view returns (
+            uint256 totalCollateralETH,
+            uint256 totalDebtETH,
+            uint256 availableBorrowsETH,
+            uint256 currentLiquidationThreshold,
+            uint256 ltv,
+            uint256 healthFactor
+        ) {
+        return _lendingPool().getUserAccountData(address(this));
+    }
+
+    function _getTargetLTV(uint256 liquidationThreshold) internal view returns (uint256) {
+        return liquidationThreshold.mul(targetLTVMultiplier).div(MAX_BPS);
+    }
+
+    function _getWarningLTV(uint256 liquidationThreshold) internal view returns (uint256) {
+        return liquidationThreshold.mul(warningLTVMultiplier).div(MAX_BPS);
+    }
+
+    // ----------------- TOKEN CONVERSIONS -----------------
+
+    function _sellAAVEForWant(uint256 _amount) internal {
+        if (_amount == 0) {
+            return;
+        }
+
+        address[] memory path;
+
+        if (address(want) == address(WETH)) {
+            path = new address[](2);
+            path[0] = address(AAVE);
+            path[1] = address(want);
+        } else {
+            path = new address[](3);
+            path[0] = address(AAVE);
+            path[1] = address(WETH);
+            path[2] = address(want);
+        }
+
+        _checkAllowance(address(router), address(AAVE), _amount);
+
+        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
+    }
+
+    function _sellInvestmentForWant(uint256 _amount) internal {
+        if (_amount == 0) {
+            return;
+        }
+
+        // NOTE: 1:1
+        if (address(want) == address(investmentToken)) {
+            return;
+        }
+
+        address[] memory path;
+        if (
+            address(want) == address(WETH) ||
+            address(investmentToken) == address(WETH)
+        ) {
+            path = new address[](2);
+            path[0] = address(investmentToken);
+            path[1] = address(want);
+        } else {
+            path = new address[](3);
+            path[0] = address(investmentToken);
+            path[1] = address(WETH);
+            path[2] = address(want);
+        }
+
+        _checkAllowance(address(router), path[0], _amount);
+
+        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
+    }
+
+
     function _AAVEtoWant(uint256 _amount) internal view returns (uint256) {
         if (_amount == 0) {
             return 0;
@@ -560,6 +629,39 @@ contract Strategy is BaseStrategy {
             path[0] = address(AAVE);
             path[1] = address(WETH);
             path[2] = address(want);
+        }
+
+        uint256[] memory amounts = router.getAmountsOut(_amount, path);
+        return amounts[amounts.length - 1];
+    }
+
+    function _wantToInvestmentToken(uint256 _amount)
+        internal
+        view
+        returns (uint256)
+    {
+        if (_amount == 0) {
+            return 0;
+        }
+
+        // NOTE: 1:1
+        if (address(want) == address(investmentToken)) {
+            return _amount;
+        }
+
+        address[] memory path;
+        if (
+            address(want) == address(WETH) ||
+            address(investmentToken) == address(WETH)
+        ) {
+            path = new address[](2);
+            path[0] = address(want);
+            path[1] = address(investmentToken);
+        } else {
+            path = new address[](3);
+            path[0] = address(want);
+            path[1] = address(WETH);
+            path[2] = address(investmentToken);
         }
 
         uint256[] memory amounts = router.getAmountsOut(_amount, path);
@@ -599,67 +701,48 @@ contract Strategy is BaseStrategy {
         return amounts[amounts.length - 1];
     }
 
-    function _balanceOfWant() internal view returns (uint256) {
-        return want.balanceOf(address(this));
-    }
-
-    function _balanceOfInvestmentToken() internal view returns (uint256) {
-        return investmentToken.balanceOf(address(this));
-    }
-
-    function _balanceOfAToken() internal view returns (uint256) {
-        return aToken.balanceOf(address(this));
-    }
-
-    function _balanceOfDebt() internal view returns (uint256) {
-        // TODO: return liabilities
-        (, uint256 ethDebt, , , , ) =
-            _lendingPool().getUserAccountData(address(this));
-        return _ethToInvestToken(ethDebt);
-    }
-
-    function _balanceOfYShares() internal view returns (uint256) {
-        return yVault.balanceOf(address(this));
-    }
-
-    function _getPricePerYShare() internal view returns (uint256) {
-        return yVault.pricePerShare();
-    }
-
-    function _valueOfInvestment() internal view returns (uint256) {
-        return
-            _balanceOfYShares().mul(_getPricePerYShare()).div(
-                10**yVault.decimals()
-            );
-    }
-
-    function _investmentToYShares(uint256 amount)
+    function _investmentTokenToETH(uint256 amount)
         internal
         view
         returns (uint256)
     {
-        return amount.mul(10**yVault.decimals()).div(_getPricePerYShare());
+        // TODO: Make it generic to other investment tokens (currently 1:1)
+        return amount;
     }
 
-    function _getCurrentLTV() internal view returns (uint256) {
-        // TODO: get current debt
-        // TODO: get current collateral
-        uint256 _debt;
-        uint256 _collateral;
-        return _debt.mul(10**yVault.decimals()).div(_collateral); // same decimals that want
+    function _wantToETH(uint256 _amount)
+        internal 
+        view
+        returns (uint256)
+    {
+        if (_amount == 0) {
+            return 0;
+        }
+
+        // NOTE: 1:1
+        if (address(want) == address(WETH)) {
+            return _amount;
+        }
+
+        address[] memory path = new address[](2);
+        path[0] = address(want);
+        path[1] = address(WETH);
+
+        uint256[] memory amounts = router.getAmountsOut(_amount, path);
+        return amounts[amounts.length - 1];
     }
 
-    function _getTargetLTV() internal view returns (uint256) {
-        return _getLiquidationLTV().mul(targetLTVMultiplier).div(MAX_BPS);
+    function _ethToInvestmentToken(uint256 amount) internal view returns (uint256) {
+        // TODO: Make it generic to other investment tokens (currently 1:1)
+        return amount;
     }
 
-    function _getWarningLTV() internal view returns (uint256) {
-        return _getLiquidationLTV().mul(warningLTVMultiplier).div(MAX_BPS);
-    }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------
 
-    function _getLiquidationLTV() internal view returns (uint256) {}
+    function _getLiquidationLTV() internal view returns (uint256) {
+        
+    }
 
     function _lendingPool() internal view returns (ILendingPool lendingPool) {
         lendingPool = ILendingPool(

@@ -412,19 +412,26 @@ contract Strategy is BaseStrategy {
             return amount;
         }
 
-        uint256 liquidity = want.balanceOf(address(aToken));
-        uint256 toWithdraw = Math.min(amount.sub(looseBalance), liquidity);
+        uint256 maxWithdrawal = Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
+        uint256 toWithdraw = Math.min(amount.sub(looseBalance), maxWithdrawal);
+    
         if (toWithdraw > 0) {
             _checkAllowance(
                 address(_lendingPool()),
                 address(aToken),
-                _balanceOfAToken()
+                toWithdraw
             );
             _lendingPool().withdraw(address(want), toWithdraw, address(this));
         }
 
         looseBalance = _balanceOfWant();
         return looseBalance;
+    }
+
+    function _maxWithdrawal() internal view returns (uint256) {
+        (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) = _getAaveUserAccountData();
+        uint256 minCollateralETH = totalDebtETH.mul(MAX_BPS).div(ltv);
+        return _ethToWant(totalCollateralETH.sub(minCollateralETH));
     }
 
     function _calculateAmountToRepay(uint256 amount) internal view returns (uint256) {
@@ -791,6 +798,28 @@ contract Strategy is BaseStrategy {
         address[] memory path = new address[](2);
         path[0] = address(want);
         path[1] = address(WETH);
+
+        uint256[] memory amounts = router.getAmountsOut(_amount, path);
+        return amounts[amounts.length - 1];
+    }
+
+    function _ethToWant(uint256 _amount)
+        internal 
+        view
+        returns (uint256)
+    {
+        if (_amount == 0) {
+            return 0;
+        }
+
+        // NOTE: 1:1
+        if (address(want) == address(WETH)) {
+            return _amount;
+        }
+
+        address[] memory path = new address[](2);
+        path[0] = address(WETH);
+        path[1] = address(want);
 
         uint256[] memory amounts = router.getAmountsOut(_amount, path);
         return amounts[amounts.length - 1];

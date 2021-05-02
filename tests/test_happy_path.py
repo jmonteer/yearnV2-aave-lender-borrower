@@ -27,5 +27,6 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     chain.sleep(60 * 60 * 10)
     chain.mine(1)
 
-    vault.withdraw({"from": wbtc_whale})
+    # why do we have losses?
+    vault.withdraw(vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale})
     assert wbtc.balanceOf(wbtc_whale) > prev_balance

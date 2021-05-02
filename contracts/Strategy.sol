@@ -399,8 +399,8 @@ contract Strategy is BaseStrategy {
         // We first repay whatever we need to repay to keep healthy ratios
         uint256 amountToRepayIT = _calculateAmountToRepay(amount);
         uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault    
-        _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         emit Repayment(amountToRepayIT, _balanceOfDebt(), _balanceOfInvestmentToken());
+        _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         uint256 balanceUnderlying = _balanceOfAToken();
         uint256 looseBalance = _balanceOfWant();
         uint256 total = balanceUnderlying.add(looseBalance);
@@ -413,8 +413,8 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 maxWithdrawal = Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
+        emit Repayment(amount.sub(looseBalance), _balanceOfDebt(), _maxWithdrawal());
         uint256 toWithdraw = Math.min(amount.sub(looseBalance), maxWithdrawal);
-    
         if (toWithdraw > 0) {
             _checkAllowance(
                 address(_lendingPool()),

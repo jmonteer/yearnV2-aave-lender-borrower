@@ -12,7 +12,7 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     vault.deposit(10 * 1e8, {"from": wbtc_whale})
 
     print_debug(yvETH, strategy, lp)
-    strategy.harvest({"from": gov})
+    tx = strategy.harvest({"from": gov})
     assert yvETH.balanceOf(strategy) > 0
     print_debug(yvETH, strategy, lp)
 
@@ -48,7 +48,6 @@ def print_debug(yvETH, strategy, lp):
     yvETH_balance = yvETH.balanceOf(strategy)
     yvETH_pps = yvETH.pricePerShare()
     totalDebtETH = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
-    borrowing_rate = (strategy._borrowingRate(0) / 1e27) * 100
 
     print(f"yvETH balance {yvETH_balance} with pps {yvETH_pps}")
     yvETH_value = (yvETH_balance * yvETH_pps) / 1e18

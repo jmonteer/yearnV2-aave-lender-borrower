@@ -210,12 +210,6 @@ contract Strategy is BaseStrategy {
         // TODO: check if there is any reason to now deposit collateral to aave
         uint256 amountToDeposit = wantBalance.sub(_debtOutstanding);
         _depositToAave(amountToDeposit);
-        // _borrowInvestmentToken(1e18);
-        // _depositInYVault();
-
-        // return;
-        // ------------ TODO --------------
-        // TODO: get current lev ratio
 
         (
             uint256 totalCollateralETH,
@@ -363,11 +357,40 @@ contract Strategy is BaseStrategy {
         IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
     }
 
+    struct CalcMaxDebtLocalVars {
+        uint256 availableLiquidity;
+        uint256 totalStableDebt;
+        uint256 totalVariableDebt;
+        uint256 totalDebt;
+        uint256 utilizationRate;
+        uint256 totalLiquidity;
+        uint256 targetUtilizationRate;
+        uint256 maxProtocolDebt;
+    }
+
+    struct IrsVars {
+        uint256 optimalRate;
+        uint256 baseRate;
+        uint256 slope1;
+        uint256 slope2;
+    }
+
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
     function _calculateMaxDebt()
         internal
         returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
     {
+        // Hack to avoid the stack too deep compiler error.
+        CalcMaxDebtLocalVars memory vars;
+        vars.availableLiquidity = 0;
+        vars.totalStableDebt = 0;
+        vars.totalVariableDebt = 0;
+        vars.totalDebt = 0;
+        vars.utilizationRate = 0;
+        vars.totalLiquidity = 0;
+        vars.targetUtilizationRate = 0;
+        vars.maxProtocolDebt = 0;
+
         DataTypes.ReserveData memory reserveData =
             _lendingPool().getReserveData(address(investmentToken));
         IReserveInterestRateStrategy irs =
@@ -376,69 +399,69 @@ contract Strategy is BaseStrategy {
             );
 
         (
-            uint256 availableLiquidity,
-            uint256 totalStableDebt,
-            uint256 totalVariableDebt,
+            vars.availableLiquidity,
+            vars.totalStableDebt,
+            vars.totalVariableDebt,
             ,
-            uint256 variableBorrowRate,
             ,
-            uint256 averageStableBorrowRate,
+            ,
+            ,
             ,
             ,
 
         ) = protocolDataProvider.getReserveData(address(investmentToken));
 
-        uint256 totalDebt = totalStableDebt.add(totalVariableDebt);
-        uint256 utilizationRate =
-            totalDebt == 0
-                ? 0
-                : totalDebt.rayDiv(availableLiquidity.add(totalDebt));
-        uint256 totalLiquidity = availableLiquidity + totalDebt;
-        uint256 targetUtilizationRate;
+        vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
+        vars.utilizationRate = vars.totalDebt == 0
+            ? 0
+            : vars.totalDebt.rayDiv(
+                vars.availableLiquidity.add(vars.totalDebt)
+            );
+        vars.totalLiquidity = vars.availableLiquidity + vars.totalDebt;
+
+        IrsVars memory irsVars;
+        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
+        irsVars.baseRate = irs.baseVariableBorrowRate();
+        irsVars.slope1 = irs.variableRateSlope1();
+        irsVars.slope2 = irs.variableRateSlope2();
 
         // acceptableCosts should always be > baseVariableBorrowRate
         // If it's not this will revert since the strategist set the wrong
         // acceptableCosts value
-
         if (
-            utilizationRate < irs.OPTIMAL_UTILIZATION_RATE() &&
-            acceptableCosts <
-            irs.baseVariableBorrowRate().add(irs.variableRateSlope1())
+            vars.utilizationRate < irsVars.optimalRate &&
+            acceptableCosts < irsVars.baseRate.add(irsVars.slope1)
         ) {
-            targetUtilizationRate = (
-                acceptableCosts.sub(irs.baseVariableBorrowRate())
-            )
-                .rayMul(irs.OPTIMAL_UTILIZATION_RATE())
-                .rayDiv(irs.variableRateSlope1());
+            vars.targetUtilizationRate = (acceptableCosts.sub(irsVars.baseRate))
+                .rayMul(irsVars.optimalRate)
+                .rayDiv(irsVars.slope1);
         } else {
             // Special case where protocol is above utilization rate but we want
             // a lower interest rate than (base + slope1)
-            if (
-                acceptableCosts <
-                irs.baseVariableBorrowRate().add(irs.variableRateSlope1())
-            ) {
-                return (totalDebt, 0);
+            if (acceptableCosts < irsVars.baseRate.add(irsVars.slope1)) {
+                return (vars.totalDebt, 0);
             }
 
-            targetUtilizationRate = (
-                acceptableCosts.sub(
-                    irs.baseVariableBorrowRate().add(irs.variableRateSlope1())
-                )
+            vars.targetUtilizationRate = (
+                acceptableCosts.sub(irsVars.baseRate.add(irsVars.slope1))
             )
-                .rayMul(uint256(1e27).sub(irs.OPTIMAL_UTILIZATION_RATE()))
-                .rayDiv(irs.variableRateSlope2())
-                .add(irs.OPTIMAL_UTILIZATION_RATE());
+                .rayMul(uint256(1e27).sub(irsVars.optimalRate))
+                .rayDiv(irsVars.slope2)
+                .add(irsVars.optimalRate);
         }
 
         // Our acceptableCosts would require to reduce the protocol utilization
         // We can't take more debt
-        if (targetUtilizationRate < utilizationRate) {
-            return (totalDebt, 0);
+        if (vars.targetUtilizationRate < vars.utilizationRate) {
+            return (vars.totalDebt, 0);
         }
 
-        uint256 maxProtocolDebt =
-            totalLiquidity.rayMul(targetUtilizationRate).div(1e27);
-        return (totalDebt, maxProtocolDebt);
+        vars.maxProtocolDebt = vars
+            .totalLiquidity
+            .rayMul(vars.targetUtilizationRate)
+            .rayDiv(1e27);
+
+        return (vars.totalDebt, vars.maxProtocolDebt);
     }
 
     function _borrowInvestmentToken(uint256 amount) internal {
@@ -482,6 +505,10 @@ contract Strategy is BaseStrategy {
     }
 
     function _depositInYVault() internal {
+        if (_balanceOfInvestmentToken() == 0) {
+            return;
+        }
+
         _checkAllowance(
             address(yVault),
             address(investmentToken),
@@ -740,7 +767,7 @@ contract Strategy is BaseStrategy {
         return aToken.balanceOf(address(this));
     }
 
-    function _balanceOfDebt() internal view returns (uint256) {
+    function _balanceOfDebt() public view returns (uint256) {
         // TODO: return liabilities
         (, uint256 ethDebt, , , , ) =
             _lendingPool().getUserAccountData(address(this));

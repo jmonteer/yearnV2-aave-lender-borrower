@@ -23,10 +23,12 @@ def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvE
     strategy.harvest({"from": gov})
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
 
-    # this fails :(
     vault.withdraw(
         vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
     )
+
+    print(f"diff {prev_balance-wbtc.balanceOf(wbtc_whale)}")
+    assert prev_balance - wbtc.balanceOf(wbtc_whale) > 0
 
 
 def get_lending_pool():

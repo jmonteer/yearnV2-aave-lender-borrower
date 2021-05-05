@@ -969,7 +969,7 @@ contract Strategy is BaseStrategy {
         return amounts[amounts.length - 1];
     }
 
-    function _investmentTokenToETH(uint256 amount)
+    function _investmentTokenToETH(uint256 _amount)
         internal
         view
         returns (uint256)
@@ -1027,7 +1027,7 @@ contract Strategy is BaseStrategy {
         return amounts[amounts.length - 1];
     }
 
-    function _ethToInvestmentToken(uint256 amount)
+    function _ethToInvestmentToken(uint256 _amount)
         internal
         view
         returns (uint256)

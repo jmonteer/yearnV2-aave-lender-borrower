@@ -351,18 +351,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _withdrawFromYVault(uint256 _amountIT) internal returns (uint256) {
-        if (_amountIT == 0) {
-            return 0;
-        }
-        // no need to check allowance bc the contract == token
-        uint256 balancePrior = balanceOfInvestmentToken();
-        uint256 sharesToWithdraw =
-            Math.min(_investmentTokenToYShares(_amountIT), _balanceOfYShares());
-        yVault.withdraw(sharesToWithdraw);
-        return balanceOfInvestmentToken().sub(balancePrior);
-    }
-
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
     function harvestTrigger(uint256 callcost) public override view returns (bool) {
@@ -402,98 +390,17 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
-    function _calculateMaxDebt()
-        internal
-        returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
-    {
-        // TODO: should we take into account rewards?
 
-        // This function is used to calculate the maximum amount of debt that the protocol can take 
-        // to keep the cost of capital lower than the set acceptableCosts
-        // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
-        // and to repay required debt to keep the rates below acceptable costs
-
-        // Hack to avoid the stack too deep compiler error.
-        CalcMaxDebtLocalVars memory vars;
-        vars.availableLiquidity = 0;
-        vars.totalStableDebt = 0;
-        vars.totalVariableDebt = 0;
-        vars.totalDebt = 0;
-        vars.utilizationRate = 0;
-        vars.totalLiquidity = 0;
-        vars.targetUtilizationRate = 0;
-        vars.maxProtocolDebt = 0;
-
-        DataTypes.ReserveData memory reserveData =
-            _lendingPool().getReserveData(address(investmentToken));
-        IReserveInterestRateStrategy irs =
-            IReserveInterestRateStrategy(
-                reserveData.interestRateStrategyAddress
-            );
-
-        (
-            vars.availableLiquidity, // = total supply - total stable debt - total variable debt
-            vars.totalStableDebt, // total debt paying stable interest rates
-            vars.totalVariableDebt, // total debt paying stable variable rates
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-
-        ) = protocolDataProvider.getReserveData(address(investmentToken));
-
-        vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
-        vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
-        vars.utilizationRate = vars.totalDebt == 0
-            ? 0
-            : vars.totalDebt.rayDiv(
-                vars.totalLiquidity
-            );
-
-        // Aave's Interest Rate Strategy Parameters (see docs)
-        IrsVars memory irsVars;
-        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE(); 
-        irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
-        irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
-        irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
-
-        // acceptableCosts should always be > baseVariableBorrowRate
-        // If it's not this will revert since the strategist set the wrong
-        // acceptableCosts value
-        if (
-            vars.utilizationRate < irsVars.optimalRate &&
-            acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
-        ) {
-            // we solve Aave's Interest Rates equation for sub optimal utilisation rates
-            // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
-            vars.targetUtilizationRate = (acceptableCostsRay.sub(irsVars.baseRate))
-                .rayMul(irsVars.optimalRate)
-                .rayDiv(irsVars.slope1);
-        } else {
-            // Special case where protocol is above utilization rate but we want
-            // a lower interest rate than (base + slope1)
-            if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (vars.totalDebt, 0);
-            }
-
-            // we solve Aave's Interest Rates equation for utilisation rates above optimal U 
-            // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
-            vars.targetUtilizationRate = (
-                acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
-            )
-                .rayMul(uint256(1e27).sub(irsVars.optimalRate))
-                .rayDiv(irsVars.slope2)
-                .add(irsVars.optimalRate);
+    function _withdrawFromYVault(uint256 _amountIT) internal returns (uint256) {
+        if (_amountIT == 0) {
+            return 0;
         }
-
-        vars.maxProtocolDebt = vars
-            .totalLiquidity
-            .rayMul(vars.targetUtilizationRate)
-            .rayDiv(1e27);
-
-        return (vars.totalDebt, vars.maxProtocolDebt);
+        // no need to check allowance bc the contract == token
+        uint256 balancePrior = balanceOfInvestmentToken();
+        uint256 sharesToWithdraw =
+            Math.min(_investmentTokenToYShares(_amountIT), _balanceOfYShares());
+        yVault.withdraw(sharesToWithdraw);
+        return balanceOfInvestmentToken().sub(balancePrior);
     }
 
     function _borrowInvestmentToken(uint256 amount) internal {
@@ -564,7 +471,7 @@ contract Strategy is BaseStrategy {
             _sellAAVEForWant(aaveBalance);
 
             // claim rewards
-            address[] memory assets = new address[](1);
+            address[] memory assets = new address[](2);
             assets[0] = isWantIncentivised ? address(aToken) : address(0);
             assets[1] = isInvestmentTokenIncentivised ? address(variableDebtToken) : address(0);
             // TODO: check aboves approach work with getRewardsBalance and claimRewards
@@ -742,6 +649,100 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- INTERNAL CALCS -----------------
+    function _calculateMaxDebt()
+        internal
+        returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
+    {
+        // TODO: should we take into account rewards?
+
+        // This function is used to calculate the maximum amount of debt that the protocol can take 
+        // to keep the cost of capital lower than the set acceptableCosts
+        // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
+        // and to repay required debt to keep the rates below acceptable costs
+
+        // Hack to avoid the stack too deep compiler error.
+        CalcMaxDebtLocalVars memory vars;
+        vars.availableLiquidity = 0;
+        vars.totalStableDebt = 0;
+        vars.totalVariableDebt = 0;
+        vars.totalDebt = 0;
+        vars.utilizationRate = 0;
+        vars.totalLiquidity = 0;
+        vars.targetUtilizationRate = 0;
+        vars.maxProtocolDebt = 0;
+
+        DataTypes.ReserveData memory reserveData =
+            _lendingPool().getReserveData(address(investmentToken));
+        IReserveInterestRateStrategy irs =
+            IReserveInterestRateStrategy(
+                reserveData.interestRateStrategyAddress
+            );
+
+        (
+            vars.availableLiquidity, // = total supply - total stable debt - total variable debt
+            vars.totalStableDebt, // total debt paying stable interest rates
+            vars.totalVariableDebt, // total debt paying stable variable rates
+            ,
+            ,
+            ,
+            ,
+            ,
+            ,
+
+        ) = protocolDataProvider.getReserveData(address(investmentToken));
+
+        vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
+        vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
+        vars.utilizationRate = vars.totalDebt == 0
+            ? 0
+            : vars.totalDebt.rayDiv(
+                vars.totalLiquidity
+            );
+
+        // Aave's Interest Rate Strategy Parameters (see docs)
+        IrsVars memory irsVars;
+        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE(); 
+        irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
+        irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
+        irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
+
+        // acceptableCosts should always be > baseVariableBorrowRate
+        // If it's not this will revert since the strategist set the wrong
+        // acceptableCosts value
+        if (
+            vars.utilizationRate < irsVars.optimalRate &&
+            acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
+        ) {
+            // we solve Aave's Interest Rates equation for sub optimal utilisation rates
+            // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
+            vars.targetUtilizationRate = (acceptableCostsRay.sub(irsVars.baseRate))
+                .rayMul(irsVars.optimalRate)
+                .rayDiv(irsVars.slope1);
+        } else {
+            // Special case where protocol is above utilization rate but we want
+            // a lower interest rate than (base + slope1)
+            if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
+                return (vars.totalDebt, 0);
+            }
+
+            // we solve Aave's Interest Rates equation for utilisation rates above optimal U 
+            // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
+            vars.targetUtilizationRate = (
+                acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
+            )
+                .rayMul(uint256(1e27).sub(irsVars.optimalRate))
+                .rayDiv(irsVars.slope2)
+                .add(irsVars.optimalRate);
+        }
+
+        vars.maxProtocolDebt = vars
+            .totalLiquidity
+            .rayMul(vars.targetUtilizationRate)
+            .rayDiv(1e27);
+
+        return (vars.totalDebt, vars.maxProtocolDebt);
+    }
+    
     function _borrowingRate(uint256 _additionalBorrow)
         internal
         view

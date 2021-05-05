@@ -974,8 +974,21 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        // TODO: Make it generic to other investment tokens (currently 1:1)
-        return amount;
+        if (_amount == 0) {
+            return 0;
+        }
+
+        // NOTE: 1:1
+        if (address(investmentToken) == address(WETH)) {
+            return _amount;
+        }
+
+        address[] memory path = new address[](2);
+        path[0] = address(investmentToken);
+        path[1] = address(WETH);
+
+        uint256[] memory amounts = router.getAmountsOut(_amount, path);
+        return amounts[amounts.length - 1];
     }
 
     function _wantToETH(uint256 _amount) internal view returns (uint256) {
@@ -1019,8 +1032,21 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        // TODO: Make it generic to other investment tokens (currently 1:1)
-        return amount;
+        if (_amount == 0) {
+            return 0;
+        }
+
+        // NOTE: 1:1
+        if (address(investmentToken) == address(WETH)) {
+            return _amount;
+        }
+
+        address[] memory path = new address[](2);
+        path[0] = address(WETH);
+        path[1] = address(investmentToken);
+
+        uint256[] memory amounts = router.getAmountsOut(_amount, path);
+        return amounts[amounts.length - 1];
     }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------

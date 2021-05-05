@@ -55,7 +55,8 @@ contract Strategy is BaseStrategy {
         address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     // true if this token is incentivised
-    bool public isIncentivised;
+    bool public isWantIncentivised;
+    bool public isInvestmentTokenIncentivised;
 
     // max interest rate we can afford to pay for borrowing investment token
     uint256 public acceptableCostsRay = 1e25; // 1% 
@@ -76,12 +77,17 @@ contract Strategy is BaseStrategy {
     constructor(
         address _vault,
         address _yVault,
-        bool _isIncentivised
+        bool _isWantIncentivised,
+        bool _isInvestmentTokenIncentivised
+
     ) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
         // maxReportDelay = 6300;
         // profitFactor = 100;
         // debtThreshold = 0;
+
+        // TODO: set up harvestTrigger conditions params
+
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
         (address _aToken, , ) =
@@ -93,8 +99,10 @@ contract Strategy is BaseStrategy {
             );
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
 
-        isIncentivised = _isIncentivised;
-        referral = 179;
+        isWantIncentivised = _isWantIncentivised;
+        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
+
+        referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
         maxTotalBorrowIT = type(uint256).max;
     }
 
@@ -120,15 +128,26 @@ contract Strategy is BaseStrategy {
 
     // ----------------- SETTERS -----------------
     // for the management to activate / deactivate incentives functionality
-    function setIsIncentivised(bool _isIncentivised) external onlyAuthorized {
+    function setIsWantIncentivised(bool _isWantIncentivised) external onlyAuthorized {
         // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
         // to avoid calling it, we use the OR and lazy evaluation
         require(
-            !_isIncentivised ||
+            !_isWantIncentivised ||
                 address(aToken.getIncentivesController()) != address(0),
             "!aToken does not have incentives controller set up"
         );
-        isIncentivised = _isIncentivised;
+        isWantIncentivised = _isWantIncentivised;
+    }
+
+    function setIsInvestmentTokenIncentivised(bool _isInvestmentTokenIncentivised) external onlyAuthorized {
+        // NOTE: if the variableDebtToken is not incentivised, getIncentivesController() might revert (variableDebtToken won't implement it)
+        // to avoid calling it, we use the OR and lazy evaluation
+        require(
+            !_isInvestmentTokenIncentivised ||
+                address(variableDebtToken.getIncentivesController()) != address(0),
+            "!aToken does not have incentives controller set up"
+        );
+        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
     }
 
     function setMaxTotalBorrowIT(uint256 _maxTotalBorrowIT)
@@ -153,10 +172,18 @@ contract Strategy is BaseStrategy {
         warningLTVMultiplier = _multiplier;
     }
 
-    function setInvestmentToken(address _setInvestmentToken) external onlyAuthorized {
-        // TODO: retrieve and set vault 
-        // TODO: retrieve and set variableDebtToken
-        // TODO: set investmentToken
+    function setYVault(IVault _yVault) external onlyAuthorized {
+        require(address(_yVault) != address(0));
+        // retrieve and set investmentToken
+        investmentToken = IERC20(IVault(_yVault).token());
+
+        // retrieve variableDebtToken
+        (, , address _variableDebtToken) =
+            protocolDataProvider.getReserveTokensAddresses(
+                address(investmentToken)
+            );
+
+        variableDebtToken = IVariableDebtToken(_variableDebtToken);
     }
 
     function setAcceptableCosts(uint256 _acceptableCostsRay)
@@ -184,7 +211,8 @@ contract Strategy is BaseStrategy {
         // claim rewards from yVault
         _takeVaultProfit();
 
-        // TODO: claim back earnings from lending interest rates
+        // claim interest from lending
+        _takeLendingProfit();
 
         uint256 balanceOfWant = balanceOfWant();
         if (balanceOfWant > balanceInit) {
@@ -201,15 +229,6 @@ contract Strategy is BaseStrategy {
             }
         }
     }
-
-    event Stats(
-        uint256 totalCollateralETH,
-        uint256 totalDebtETH,
-        uint256 availableBorrowsETH,
-        uint256 currentLiquidationThreshold,
-        uint256 currentLTV,
-        uint256 healthFactor
-    );
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
 
@@ -346,6 +365,11 @@ contract Strategy is BaseStrategy {
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
+    function harvestTrigger(uint256 callcost) public override view returns (bool) {
+        // TODO: take into account super's harvest
+        return _checkCooldown();
+    }
+
     function prepareMigration(address _newStrategy) internal override {
         // TODO: Transfer any non-`want` tokens to the new strategy
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
@@ -477,6 +501,8 @@ contract Strategy is BaseStrategy {
             return;
         }
 
+        // TODO: cap to max borrow
+
         _lendingPool().borrow(
             address(investmentToken),
             amount,
@@ -502,7 +528,7 @@ contract Strategy is BaseStrategy {
             address(investmentToken),
             toRepayIT
         );
-        // TODO: check which are the units of the toRepayIT
+
         _lendingPool().repay(
             address(investmentToken),
             toRepayIT,
@@ -525,7 +551,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _claimRewards() internal {
-        if (isIncentivised) {
+        if (isInvestmentTokenIncentivised || isWantIncentivised) {
             // redeem AAVE from stkAave
             uint256 stkAaveBalance =
                 IERC20(address(stkAave)).balanceOf(address(this));
@@ -539,8 +565,9 @@ contract Strategy is BaseStrategy {
 
             // claim rewards
             address[] memory assets = new address[](1);
-            assets[0] = address(aToken);
-            assets[1] = address(variableDebtToken);
+            assets[0] = isWantIncentivised ? address(aToken) : address(0);
+            assets[1] = isInvestmentTokenIncentivised ? address(variableDebtToken) : address(0);
+            // TODO: check aboves approach work with getRewardsBalance and claimRewards
             uint256 pendingRewards =
                 _incentivesController().getRewardsBalance(
                     assets,
@@ -558,6 +585,15 @@ contract Strategy is BaseStrategy {
             if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
                 stkAave.cooldown();
             }
+        }
+    }
+
+    function _takeLendingProfit() internal {
+        uint256 depositedWant = vault.strategies(address(this)).totalDebt;
+        uint256 currentWantInAave = balanceOfAToken();
+
+        if(depositedWant < currentWantInAave) {
+            _withdrawFromAave(currentWantInAave.sub(depositedWant));
         }
     }
 
@@ -659,7 +695,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _checkCooldown() internal view returns (bool) {
-        if (!isIncentivised) {
+        if (!isWantIncentivised || !isInvestmentTokenIncentivised) {
             return false;
         }
 
@@ -766,10 +802,7 @@ contract Strategy is BaseStrategy {
     }
 
     function balanceOfDebt() public view returns (uint256) {
-        // TODO: return liabilities
-        (, uint256 ethDebt, , , , ) =
-            _lendingPool().getUserAccountData(address(this));
-        return _ethToInvestmentToken(ethDebt);
+        return variableDebtToken.balanceOf(address(this));
     }
 
     function _balanceOfYShares() internal view returns (uint256) {
@@ -1064,7 +1097,9 @@ contract Strategy is BaseStrategy {
         view
         returns (IAaveIncentivesController)
     {
-        if (isIncentivised) {
+        // TODO: handle different incentives controller
+        if (isWantIncentivised) {
+            require(aToken.getIncentivesController() == variableDebtToken.getIncentivesController(), "!error incentives controller");
             return aToken.getIncentivesController();
         } else {
             return IAaveIncentivesController(0);

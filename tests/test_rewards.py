@@ -63,22 +63,18 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
 
-def test_rewards_off(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    with reverts("!aToken is incentivised"):
-        strategy.setIsWantIncentivised(False)
+def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
+    vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
+    vault_susd = Contract("0xa5cA62D95D24A4a350983D5B8ac4EB8638887396")
 
-    with reverts("!variableDebtToken is incentivised"):
-        strategy.setIsInvestmentTokenIncentivised(False)
+    # it should deploy 
+    strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
 
-def test_rewards_off_deploy(strategist, keeper, vault, Strategy, gov, yvETH):
-    with reverts("!aToken is incentivised"):
-        strategist.deploy(Strategy, vault, yvETH, False, True)
-        
-    with reverts("!variableDebtToken is incentivised"):
-        strategist.deploy(Strategy, vault, yvETH, True, False)
+    with reverts():
+        strategy.setIsWantIncentivised(True)
 
-    with reverts("!aToken is incentivised"):
-        strategist.deploy(Strategy, vault, yvETH, False, False)
+    with reverts():
+        strategy.setIsInvestmentTokenIncentivised(True)
 
 def get_incentives_controller(strat):
     atoken = Contract(strat.aToken())

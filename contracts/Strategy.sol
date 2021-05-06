@@ -13,12 +13,13 @@ import {
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./WadRayMath.sol";
 
-import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/ISwap.sol";
 import "./interfaces/IWETH.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/aave/IAToken.sol";
+import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/aave/IStakedAave.sol";
+import "./interfaces/aave/IPriceOracle.sol";
 import "./interfaces/aave/ILendingPool.sol";
 import "./interfaces/aave/IVariableDebtToken.sol";
 import "./interfaces/aave/IProtocolDataProvider.sol";
@@ -32,16 +33,12 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
-    ISwap public constant sushiswap =
-        ISwap(address(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F));
-    ISwap public constant uniswap =
-        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
     ISwap public router =
         ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
 
-    IStakedAave public constant stkAave =
+    IStakedAave public stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-    IProtocolDataProvider public constant protocolDataProvider =
+    IProtocolDataProvider public protocolDataProvider =
         IProtocolDataProvider(
             address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d)
         );
@@ -49,9 +46,9 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 public investmentToken;
     IVariableDebtToken public variableDebtToken;
-    address public constant WETH =
+    address public WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public constant AAVE =
+    address public AAVE =
         address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     // true if this token is incentivised
@@ -60,7 +57,7 @@ contract Strategy is BaseStrategy {
 
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = type(uint256).max; // default: infinite
+    uint256 public acceptableCostsRay = 1e27;
 
     // Aave's referral code
     uint16 internal referral;
@@ -124,8 +121,16 @@ contract Strategy is BaseStrategy {
         return
             balanceOfWant()
                 .add(balanceOfAToken()) // asset suplied as collateral
-                .add(_investmentTokenToWant(_valueOfInvestment())) // current value of assets deposited in vault
-                .sub(_investmentTokenToWant(balanceOfDebt())); // liabilities
+                .add(_fromETH(
+                            _toETH(_valueOfInvestment(), address(investmentToken)),
+                            address(want)
+                            )
+                    ) // current value of assets deposited in vault
+                .sub(_fromETH(
+                            _toETH(balanceOfDebt(), address(investmentToken)), 
+                            address(want)
+                        )
+                    ); // liabilities
     }
 
     // ----------------- SETTERS -----------------
@@ -153,7 +158,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setReferralCode(uint16 _referral) external onlyAuthorized {
-        require(_referral != 0, "!invalid referral code");
+        require(_referral != 0);
         referral = _referral;
     }
 
@@ -169,15 +174,22 @@ contract Strategy is BaseStrategy {
 
     function setYVault(IVault _yVault) external onlyAuthorized {
         require(address(_yVault) != address(0));
+        if(balanceOfDebt() != 0) {
+            uint256 amountToRepayIT = _valueOfInvestment(); // we will repay the full amount of InvestmentToken
+            _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
+            _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
+        
+            // we sell profits
+            uint256 balanceIT = balanceOfInvestmentToken();
+            if(balanceIT > 0) {
+                _sellInvestmentForWant(balanceIT);
+            }
+        }
 
-        uint256 amountToRepayIT = _valueOfInvestment(); // we will repay the full amount of InvestmentToken
-        _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
-        _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
-    
-        // we are going to stop using these tokens so we need to be sure we have all at 0 balance
+        // we are going to stop using these tokens so we need to be sure we have all 0 balance
         require(balanceOfInvestmentToken() == 0);
         require(balanceOfDebt() == 0);
-        require(_balanceOfYShares() == 0);
+        require(yVault.balanceOf(address(this)) == 0);
 
         // set new investment Token
         investmentToken = IERC20(IVault(_yVault).token());
@@ -296,7 +308,7 @@ contract Strategy is BaseStrategy {
                 amountToBorrowETH = maxProtocolDebt.sub(currentProtocolDebt);
             }
 
-            uint256 maxTotalBorrowETH = _investmentTokenToETH(maxTotalBorrowIT);
+            uint256 maxTotalBorrowETH = _toETH(maxTotalBorrowIT, address(investmentToken));
             if (totalDebtETH.add(amountToBorrowETH) > maxTotalBorrowETH) {
                 amountToBorrowETH = maxTotalBorrowETH > totalDebtETH
                     ? maxTotalBorrowETH.sub(totalDebtETH)
@@ -304,7 +316,7 @@ contract Strategy is BaseStrategy {
             }
 
             // convert to InvestmentToken
-            uint256 amountToBorrowIT = _ethToInvestmentToken(amountToBorrowETH);
+            uint256 amountToBorrowIT = _fromETH(amountToBorrowETH, address(investmentToken));
             _borrowInvestmentToken(amountToBorrowIT);
             _depositInYVault();
         } else if (
@@ -315,18 +327,18 @@ contract Strategy is BaseStrategy {
             // we repay debt to set it to targetLTV
             uint256 targetDebtETH =
                 targetLTV.mul(totalCollateralETH).div(MAX_BPS);
-            uint256 amountToRepayETH = totalDebtETH.sub(targetDebtETH);
+            uint256 amountToRepayETH = targetDebtETH < totalDebtETH ? totalDebtETH.sub(targetDebtETH) : 0;
 
             if (maxProtocolDebt == 0) {
                 amountToRepayETH = totalDebtETH;
             } else if (currentProtocolDebt > maxProtocolDebt) {
                 amountToRepayETH = Math.max(
                     amountToRepayETH,
-                    currentProtocolDebt - maxProtocolDebt
+                    currentProtocolDebt.sub(maxProtocolDebt)
                 );
             }
 
-            uint256 amountToRepayIT = _ethToInvestmentToken(amountToRepayETH);
+            uint256 amountToRepayIT = _fromETH(amountToRepayETH, address(investmentToken));
             uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
             _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         }
@@ -360,20 +372,16 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
+    function prepareMigration(address _newStrategy) internal override {
+        liquidatePosition(vault.strategies(_newStrategy).totalDebt);
+    }
 
-    function harvestTrigger(uint256 callcost)
-        public
-        view
-        override
-        returns (bool)
-    {
-        // TODO: take into account super's harvest
+    function harvestTrigger(uint256 callCost) public view override returns (bool) {
         return _checkCooldown();
     }
 
-    function prepareMigration(address _newStrategy) internal override {
-        liquidatePosition(vault.strategies(_newStrategy).totalDebt);
+    function tendTrigger(uint256 callCost) public view override returns (bool) {
+        return _checkCooldown();
     }
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
@@ -410,7 +418,7 @@ contract Strategy is BaseStrategy {
         // no need to check allowance bc the contract == token
         uint256 balancePrior = balanceOfInvestmentToken();
         uint256 sharesToWithdraw =
-            Math.min(_investmentTokenToYShares(_amountIT), _balanceOfYShares());
+            Math.min(_investmentTokenToYShares(_amountIT).add(1), yVault.balanceOf(address(this))); // we add 1 to avoid rounding errors
         yVault.withdraw(sharesToWithdraw);
         return balanceOfInvestmentToken().sub(balancePrior);
     }
@@ -441,7 +449,7 @@ contract Strategy is BaseStrategy {
         uint256 balance = balanceOfInvestmentToken();
         amount = Math.min(amount, balance);
 
-        uint256 toRepayIT = Math.min(_ethToInvestmentToken(debtInETH), amount);
+        uint256 toRepayIT = Math.min(_fromETH(debtInETH, address(investmentToken)), amount);
         _checkAllowance(
             address(_lendingPool()),
             address(investmentToken),
@@ -548,6 +556,7 @@ contract Strategy is BaseStrategy {
             Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
 
         uint256 toWithdraw = Math.min(amount.sub(looseBalance), maxWithdrawal);
+        emit Withdrawing(amount.sub(looseBalance), _maxWithdrawal(), want.balanceOf(address(aToken)));
         if (toWithdraw > 0) {
             _checkAllowance(
                 address(_lendingPool()),
@@ -561,11 +570,13 @@ contract Strategy is BaseStrategy {
         return looseBalance;
     }
 
+    event Withdrawing(uint256 amount, uint256 maxWithdrawal, uint256 liquidity);
+
     function _maxWithdrawal() internal view returns (uint256) {
         (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) =
             _getAaveUserAccountData();
         uint256 minCollateralETH = totalDebtETH.mul(MAX_BPS).div(ltv);
-        return _ethToWant(totalCollateralETH.sub(minCollateralETH));
+        return _fromETH(totalCollateralETH.sub(minCollateralETH), address(want));
     }
 
     function _calculateAmountToRepay(uint256 amount)
@@ -587,7 +598,7 @@ contract Strategy is BaseStrategy {
 
         ) = _getAaveUserAccountData();
 
-        uint256 amountToWithdrawETH = _wantToETH(amount);
+        uint256 amountToWithdrawETH = _toETH(amount, address(want));
         // calculate the collateral that we are leaving after withdrawing
         uint256 newCollateral =
             amountToWithdrawETH < totalCollateralETH
@@ -610,7 +621,7 @@ contract Strategy is BaseStrategy {
         // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
         // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
         uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
-        return _ethToInvestmentToken(totalDebtETH.sub(newTargetDebt));
+        return _fromETH(totalDebtETH.sub(newTargetDebt), address(investmentToken));
     }
 
     function _depositToAave(uint256 amount) internal {
@@ -765,53 +776,6 @@ contract Strategy is BaseStrategy {
         return (vars.totalDebt, vars.maxProtocolDebt);
     }
 
-    function _borrowingRate(uint256 _additionalBorrow)
-        internal
-        view
-        returns (uint256)
-    {
-        (
-            uint256 availableLiquidity,
-            uint256 totalStableDebt,
-            uint256 totalVariableDebt,
-            ,
-            uint256 variableBorrowRate,
-            ,
-            uint256 averageStableBorrowRate,
-            ,
-            ,
-
-        ) = protocolDataProvider.getReserveData(address(investmentToken));
-
-        // If we are not adding anything, variable borrow rate is enough
-        if (_additionalBorrow == 0) {
-            return variableBorrowRate;
-        }
-
-        DataTypes.ReserveData memory reserveData =
-            _lendingPool().getReserveData(address(investmentToken));
-        uint256 newTotalVariableDebt = totalVariableDebt.add(_additionalBorrow);
-
-        (, , , , uint256 reserveFactor, , , , , ) =
-            protocolDataProvider.getReserveConfigurationData(address(want));
-
-        (, , uint256 newVariableBorrowRate) =
-            IReserveInterestRateStrategy(
-                reserveData
-                    .interestRateStrategyAddress
-            )
-                .calculateInterestRates(
-                address(investmentToken),
-                availableLiquidity,
-                totalStableDebt,
-                newTotalVariableDebt,
-                averageStableBorrowRate,
-                reserveFactor
-            );
-
-        return newVariableBorrowRate;
-    }
-
     function balanceOfWant() public view returns (uint256) {
         return want.balanceOf(address(this));
     }
@@ -828,17 +792,9 @@ contract Strategy is BaseStrategy {
         return variableDebtToken.balanceOf(address(this));
     }
 
-    function _balanceOfYShares() internal view returns (uint256) {
-        return yVault.balanceOf(address(this));
-    }
-
-    function _getPricePerYShare() internal view returns (uint256) {
-        return yVault.pricePerShare();
-    }
-
     function _valueOfInvestment() internal view returns (uint256) {
         return
-            _balanceOfYShares().mul(_getPricePerYShare()).div(
+            yVault.balanceOf(address(this)).mul(yVault.pricePerShare()).div(
                 10**yVault.decimals()
             );
     }
@@ -848,7 +804,7 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        return amount.mul(10**yVault.decimals()).div(_getPricePerYShare());
+        return amount.mul(10**yVault.decimals()).div(yVault.pricePerShare());
     }
 
     function _getAaveUserAccountData()
@@ -885,40 +841,22 @@ contract Strategy is BaseStrategy {
     function _setIsWantIncentivised(bool _isWantIncentivised)
         internal
     {
-        // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
-        // to avoid calling it, we use the OR and lazy evaluation
-        require(
-            !_isWantIncentivised ||
-                address(aToken.getIncentivesController()) != address(0),
-            "!aToken does not have incentives controller set up"
-        );
-
-        require(
-            _isWantIncentivised ||
-                address(aToken.getIncentivesController()) ==
-                address(0),
-            "!aToken is incentivised"
-        );
-
+            require(
+                !_isWantIncentivised || // to avoid calling getIncentivesController if not incentivised
+                    address(aToken.getIncentivesController()) !=
+                    address(0)
+            );
+            
         isWantIncentivised = _isWantIncentivised;
     }
 
     function _setIsInvestmentTokenIncentivised(bool _isInvestmentTokenIncentivised) internal {
-        // NOTE: if the variableDebtToken is not incentivised, getIncentivesController() might revert (variableDebtToken won't implement it)
-        // to avoid calling it, we use the OR and lazy evaluation
         require(
-            !_isInvestmentTokenIncentivised ||
+                !_isInvestmentTokenIncentivised || // to avoid calling getIncentivesController if not incentivised
                 address(variableDebtToken.getIncentivesController()) !=
-                address(0),
-            "!variableDebtToken does not have incentives controller set up"
+                address(0)
         );
-
-        require(
-            _isInvestmentTokenIncentivised ||
-                address(variableDebtToken.getIncentivesController()) ==
-                address(0),
-            "!variableDebtToken is incentivised"
-        );
+        
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
     }
 
@@ -977,182 +915,50 @@ contract Strategy is BaseStrategy {
         router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
     }
 
-    function _AAVEtoWant(uint256 _amount) internal view returns (uint256) {
+    function _toETH(uint256 _amount, address asset) internal view returns (uint256) {
         if (_amount == 0) {
             return 0;
         }
 
-        address[] memory path;
-
-        if (address(want) == address(WETH)) {
-            path = new address[](2);
-            path[0] = address(AAVE);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(AAVE);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
-    }
-
-    function _wantToInvestmentToken(uint256 _amount)
-        internal
-        view
-        returns (uint256)
-    {
-        if (_amount == 0) {
-            return 0;
+        if(_amount == type(uint256).max){
+            return type(uint256).max;
         }
 
         // NOTE: 1:1
-        if (address(want) == address(investmentToken)) {
+        if (address(asset) == address(WETH)) {
             return _amount;
         }
-
-        address[] memory path;
-        if (
-            address(want) == address(WETH) ||
-            address(investmentToken) == address(WETH)
-        ) {
-            path = new address[](2);
-            path[0] = address(want);
-            path[1] = address(investmentToken);
-        } else {
-            path = new address[](3);
-            path[0] = address(want);
-            path[1] = address(WETH);
-            path[2] = address(investmentToken);
-        }
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
+        
+        return _amount.mul(_priceOracle().getAssetPrice(asset)).div(uint256(10) ** uint256(IOptionalERC20(asset).decimals()));
     }
 
-    function _investmentTokenToWant(uint256 _amount)
-        internal
-        view
-        returns (uint256)
-    {
+    function _fromETH(uint256 _amount, address asset) internal view returns (uint256) {
         if (_amount == 0) {
             return 0;
         }
 
-        // NOTE: 1:1
-        if (address(want) == address(investmentToken)) {
-            return _amount;
-        }
-
-        address[] memory path;
-        if (
-            address(want) == address(WETH) ||
-            address(investmentToken) == address(WETH)
-        ) {
-            path = new address[](2);
-            path[0] = address(investmentToken);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(investmentToken);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
-    }
-
-    function _investmentTokenToETH(uint256 _amount)
-        internal
-        view
-        returns (uint256)
-    {
-        if (_amount == 0) {
-            return 0;
+        if(_amount == type(uint256).max){
+            return type(uint256).max;
         }
 
         // NOTE: 1:1
-        if (address(investmentToken) == address(WETH)) {
+        if (address(asset) == address(WETH)) {
             return _amount;
         }
 
-        address[] memory path = new address[](2);
-        path[0] = address(investmentToken);
-        path[1] = address(WETH);
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
-    }
-
-    function _wantToETH(uint256 _amount) internal view returns (uint256) {
-        if (_amount == 0) {
-            return 0;
-        }
-
-        // NOTE: 1:1
-        if (address(want) == address(WETH)) {
-            return _amount;
-        }
-
-        address[] memory path = new address[](2);
-        path[0] = address(want);
-        path[1] = address(WETH);
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
-    }
-
-    function _ethToWant(uint256 _amount) internal view returns (uint256) {
-        if (_amount == 0) {
-            return 0;
-        }
-
-        // NOTE: 1:1
-        if (address(want) == address(WETH)) {
-            return _amount;
-        }
-
-        address[] memory path = new address[](2);
-        path[0] = address(WETH);
-        path[1] = address(want);
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
-    }
-
-    function _ethToInvestmentToken(uint256 _amount)
-        internal
-        view
-        returns (uint256)
-    {
-        if (_amount == 0) {
-            return 0;
-        }
-
-        // NOTE: 1:1
-        if (address(investmentToken) == address(WETH)) {
-            return _amount;
-        }
-
-        address[] memory path = new address[](2);
-        path[0] = address(WETH);
-        path[1] = address(investmentToken);
-
-        uint256[] memory amounts = router.getAmountsOut(_amount, path);
-        return amounts[amounts.length - 1];
+        return _amount.mul(uint256(10) ** uint256(IOptionalERC20(asset).decimals())).div(_priceOracle().getAssetPrice(asset));
     }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------
-
-    function _getLiquidationLTV() internal view returns (uint256) {}
 
     function _lendingPool() internal view returns (ILendingPool lendingPool) {
         lendingPool = ILendingPool(
             protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()
         );
+    }
+
+    function _priceOracle() internal view returns (IPriceOracle) {
+        return IPriceOracle(protocolDataProvider.ADDRESSES_PROVIDER().getPriceOracle());
     }
 
     function _incentivesController()
@@ -1162,11 +968,6 @@ contract Strategy is BaseStrategy {
     {
         // TODO: handle different incentives controller
         if (isWantIncentivised) {
-            require(
-                aToken.getIncentivesController() ==
-                    variableDebtToken.getIncentivesController(),
-                "!error incentives controller"
-            );
             return aToken.getIncentivesController();
         } else {
             return IAaveIncentivesController(0);

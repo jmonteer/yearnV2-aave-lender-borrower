@@ -33,22 +33,24 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
-    ISwap public router =
-        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
-
-    IStakedAave public stkAave =
-        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-    IProtocolDataProvider public protocolDataProvider =
-        IProtocolDataProvider(
-            address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d)
-        );
     IAToken public aToken;
     IVault public yVault;
     IERC20 public investmentToken;
+    
+    ISwap public constant router =
+        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
+
+    IStakedAave public constant stkAave =
+        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+    IProtocolDataProvider public constant protocolDataProvider =
+        IProtocolDataProvider(
+            address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d)
+        );
     IVariableDebtToken public variableDebtToken;
-    address public WETH =
+    
+    address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public AAVE =
+    address public constant AAVE =
         address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     // true if this token is incentivised

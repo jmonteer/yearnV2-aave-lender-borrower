@@ -14,7 +14,7 @@ def test_change_yVault(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale,
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})
 
-    tx = strategy.harvest({'from': gov})
+    tx = strategy.harvest({"from": gov})
 
     chain.sleep(24 * 3600)
     chain.mine(1)
@@ -28,20 +28,23 @@ def test_change_yVault(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale,
     assert vault.balanceOf(strategy) == 0
     assert strategy.balanceOfDebt() == 0
 
-    strategy.harvest({'from': gov})
+    strategy.harvest({"from": gov})
 
     assert vault_snx.balanceOf(strategy) > 0
+
 
 def get_incentives_controller(strat):
     atoken = Contract(strat.aToken())
     ic = Contract(atoken.getIncentivesController())
     return ic
 
+
 def get_lending_pool():
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
     lp = Contract(a_provider.getLendingPool())
     return lp
+
 
 def print_debug(yvETH, strategy, lp):
     yvETH_balance = yvETH.balanceOf(strategy)

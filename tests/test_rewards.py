@@ -63,11 +63,12 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
 
+
 def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
     vault_susd = Contract("0xa5cA62D95D24A4a350983D5B8ac4EB8638887396")
 
-    # it should deploy 
+    # it should deploy
     strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
 
     with reverts():
@@ -75,6 +76,7 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
 
     with reverts():
         strategy.setIsInvestmentTokenIncentivised(True)
+
 
 def get_incentives_controller(strat):
     atoken = Contract(strat.aToken())

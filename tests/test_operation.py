@@ -24,7 +24,8 @@ def test_operation(
     # withdrawal
     vault.withdraw({"from": wbtc_whale})
     assert (
-        pytest.approx(token.balanceOf(wbtc_whale), rel=RELATIVE_APPROX) == user_balance_before
+        pytest.approx(token.balanceOf(wbtc_whale), rel=RELATIVE_APPROX)
+        == user_balance_before
     )
 
 
@@ -45,7 +46,18 @@ def test_emergency_exit(
 
 
 def test_profitable_harvest(
-    accounts, token, vault, strategy, wbtc_whale, user, strategist, RELATIVE_APPROX, chain, weth, weth_whale, yvETH
+    accounts,
+    token,
+    vault,
+    strategy,
+    wbtc_whale,
+    user,
+    strategist,
+    RELATIVE_APPROX,
+    chain,
+    weth,
+    weth_whale,
+    yvETH,
 ):
     # Deposit to the vault
     token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
@@ -61,12 +73,12 @@ def test_profitable_harvest(
     chain.sleep(50 * 24 * 3600)
     chain.mine(1)
 
-    strategy.harvest() # to claim and start cooldown
+    strategy.harvest()  # to claim and start cooldown
 
-    chain.sleep(10 * 24 * 3600 + 1) # sleep during cooldown
+    chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
-    
-    weth.transfer(yvETH, Wei("20_000 ether"), {'from': weth_whale})
+
+    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     strategy.harvest()
@@ -120,15 +132,13 @@ def test_sweep(gov, vault, strategy, token, wbtc_whale, user, weth_whale, weth):
     #     strategy.sweep(strategy.protectedToken(), {"from": gov})
 
     before_balance = weth.balanceOf(gov)
-    weth.transfer(strategy, Wei('1 ether'), {"from": weth_whale})
+    weth.transfer(strategy, Wei("1 ether"), {"from": weth_whale})
     assert weth.address != strategy.want()
     strategy.sweep(weth, {"from": gov})
-    assert weth.balanceOf(gov) == Wei('1 ether') + before_balance
+    assert weth.balanceOf(gov) == Wei("1 ether") + before_balance
 
 
-def test_triggers(
-    gov, vault, strategy, wbtc_whale, token, user, weth, strategist
-):
+def test_triggers(gov, vault, strategy, wbtc_whale, token, user, weth, strategist):
     # Deposit to the vault and harvest
     token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})

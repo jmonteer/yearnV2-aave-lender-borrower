@@ -87,8 +87,6 @@ contract Strategy is BaseStrategy {
         // profitFactor = 100;
         // debtThreshold = 0;
 
-        // TODO: set up harvestTrigger conditions params
-
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
         (address _aToken, , ) =
@@ -230,6 +228,7 @@ contract Strategy is BaseStrategy {
         uint256 balanceInit = balanceOfWant();
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
+
         // claim rewards from yVault
         _takeVaultProfit();
 
@@ -381,6 +380,8 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
+        // in yearn-vaults, the oldStrategy's totalDebt is set to 0 before calling migrate on BaseStrategy
+        // so we need to use totalDebt of the _newStrategy even if that logic "does not make sense"
         liquidatePosition(vault.strategies(_newStrategy).totalDebt);
     }
 
@@ -390,10 +391,14 @@ contract Strategy is BaseStrategy {
         override
         returns (bool)
     {
+        // TODO: check ratios
+        // TODO: check costs
         return _checkCooldown();
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {
+        // TODO: check ratios
+        // TODO: check costs
         return _checkCooldown();
     }
 
@@ -443,8 +448,6 @@ contract Strategy is BaseStrategy {
         if (amount == 0) {
             return;
         }
-
-        // TODO: cap to max borrow
 
         _lendingPool().borrow(
             address(investmentToken),
@@ -709,8 +712,6 @@ contract Strategy is BaseStrategy {
         internal
         returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
     {
-        // TODO: should we take into account rewards?
-
         // This function is used to calculate the maximum amount of debt that the protocol can take
         // to keep the cost of capital lower than the set acceptableCosts
         // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
@@ -1005,9 +1006,10 @@ contract Strategy is BaseStrategy {
         view
         returns (IAaveIncentivesController)
     {
-        // TODO: handle different incentives controller
         if (isWantIncentivised) {
             return aToken.getIncentivesController();
+        } else if (isInvestmentTokenIncentivised) {
+            return variableDebtToken.getIncentivesController();
         } else {
             return IAaveIncentivesController(0);
         }

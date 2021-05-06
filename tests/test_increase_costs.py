@@ -25,8 +25,7 @@ def test_increase_costs(
     ]
     acceptable = strategy.acceptableCostsRay()
     # put acceptablecosts just below currentCost
-    while currentCost < acceptable:
-        acceptable = acceptable - 1e22
+    acceptable = currentCost - 1e22
 
     strategy.setAcceptableCosts(acceptable)
 

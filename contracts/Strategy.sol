@@ -37,10 +37,10 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 public investmentToken;
 
-    ISwap public constant router =
+    ISwap public router =
         ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
 
-    IStakedAave public constant stkAave =
+    IStakedAave public stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
     IProtocolDataProvider public constant protocolDataProvider =
         IProtocolDataProvider(
@@ -50,8 +50,7 @@ contract Strategy is BaseStrategy {
 
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public constant AAVE =
-        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+    address public AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     // true if this token is incentivised
     bool public isWantIncentivised;
@@ -82,10 +81,10 @@ contract Strategy is BaseStrategy {
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised
     ) public BaseStrategy(_vault) {
-        // You can set these parameters on deployment to whatever you want
-        // maxReportDelay = 6300;
-        // profitFactor = 100;
-        // debtThreshold = 0;
+        minReportDelay = 24 * 3600;
+        maxReportDelay = 10 * 24 * 3600;
+        profitFactor = 100;
+        debtThreshold = 0;
 
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
@@ -158,7 +157,6 @@ contract Strategy is BaseStrategy {
     }
 
     function setReferralCode(uint16 _referral) external onlyAuthorized {
-        require(_referral != 0);
         referral = _referral;
     }
 
@@ -173,7 +171,6 @@ contract Strategy is BaseStrategy {
     }
 
     function setYVault(IVault _yVault) external onlyAuthorized {
-        require(address(_yVault) != address(0));
         if (balanceOfDebt() != 0) {
             uint256 amountToRepayIT = _valueOfInvestment(); // we will repay the full amount of InvestmentToken
             _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
@@ -391,15 +388,49 @@ contract Strategy is BaseStrategy {
         override
         returns (bool)
     {
-        // TODO: check ratios
-        // TODO: check costs
-        return _checkCooldown();
+        // we harvest if:
+        // 1. stakedAave is ready to be converted to Aave and sold
+
+        return _checkCooldown() || super.harvestTrigger(callCost);
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {
-        // TODO: check ratios
-        // TODO: check costs
-        return _checkCooldown();
+        // we adjust position if:
+        // 1. LTV ratios are not in the HEALTHY range (either we take on more debt or repay debt)
+        // 2. costs are not acceptable and we need to repay debt
+
+        (
+            uint256 totalCollateralETH,
+            uint256 totalDebtETH,
+            uint256 availableBorrowsETH,
+            uint256 currentLiquidationThreshold,
+            uint256 ltv,
+            uint256 healthFactor
+        ) = _getAaveUserAccountData();
+
+        uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
+        uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
+        uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
+        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
+            _calculateMaxDebt();
+
+        if (
+            currentLTV < targetLTV &&
+            currentProtocolDebt < maxProtocolDebt &&
+            targetLTV.sub(currentLTV) > 100
+        ) {
+            // WE NEED TO TAKE ON MORE DEBT
+            // threshold of 100 bps of difference
+            return true;
+        } else if (
+            currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
+        ) {
+            // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
+            // no threshold, take immediate action
+            return true;
+        }
+
+        return super.harvestTrigger(callCost);
     }
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
@@ -710,6 +741,7 @@ contract Strategy is BaseStrategy {
     // ----------------- INTERNAL CALCS -----------------
     function _calculateMaxDebt()
         internal
+        view
         returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
     {
         // This function is used to calculate the maximum amount of debt that the protocol can take

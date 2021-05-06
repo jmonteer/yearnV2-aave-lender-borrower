@@ -50,7 +50,7 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
     tx = strategy.harvest({"from": gov})
 
-    assert stkAave.balanceOf(strategy) == accumulatedRewards
+    assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
     assert strategy.estimatedTotalAssets() > previousAssets
     assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]

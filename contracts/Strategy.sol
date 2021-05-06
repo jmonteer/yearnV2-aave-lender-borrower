@@ -101,7 +101,7 @@ contract Strategy is BaseStrategy {
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
         referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
-        maxTotalBorrowIT = type(uint256).max;
+        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------

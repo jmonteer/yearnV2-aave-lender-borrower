@@ -1,23 +1,27 @@
-# TODO: Add tests that show proper migration of the strategy to a newer one
-#       Use another copy of the strategy to simulate the migration
-#       Show that nothing is lost!
-
 import pytest
+from brownie import chain, Wei
 
 
 def test_migration(
-    token, vault, strategy, amount, Strategy, strategist, gov, user, RELATIVE_APPROX
+    vault, strategy, Strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
 ):
-    # Deposit to the vault and harvest
-    token.approve(vault.address, amount, {"from": user})
-    vault.deposit(amount, {"from": user})
-    strategy.harvest()
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    prev_balance = wbtc.balanceOf(wbtc_whale)
+    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
+    vault.deposit(10 * 1e8, {"from": wbtc_whale})
 
-    # migrate to a new strategy
-    new_strategy = strategist.deploy(Strategy, vault)
-    strategy.migrate(new_strategy.address, {"from": gov})
-    assert (
-        pytest.approx(new_strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
-        == amount
+    tx = strategy.harvest({"from": gov})
+    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
+    tx = strategy.harvest({"from": gov})
+    chain.sleep(60 * 60 * 24 * 2)
+    chain.mine(1)
+
+    # Deploy new Strategy and migrate
+    strategy2 = gov.deploy(Strategy, vault, yvETH, True, True)
+    vault.migrateStrategy(strategy, strategy2, {"from": gov})
+
+    assert strategy2.estimatedTotalAssets() > 0
+
+    vault.withdraw(
+        vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
     )
+    assert wbtc.balanceOf(wbtc_whale) > prev_balance

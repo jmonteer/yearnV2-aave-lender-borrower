@@ -59,15 +59,15 @@ contract Strategy is BaseStrategy {
     bool public isInvestmentTokenIncentivised;
 
     // max interest rate we can afford to pay for borrowing investment token
-    uint256 public acceptableCostsRay = 1e25; // 1% 
+    uint256 public acceptableCostsRay = 1e25; // 1%
 
     // Aave's referral code
     uint16 internal referral;
 
     // NOTE: LTV = Loan-To-Value = debt/collateral
-    // Target LTV: ratio up to which which we will borrow 
+    // Target LTV: ratio up to which which we will borrow
     uint256 public targetLTVMultiplier = 6_000; // 60% of liquidation LTV
-    // Warning LTV: ratio at which we will repay 
+    // Warning LTV: ratio at which we will repay
     uint256 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
     uint256 internal constant MAX_BPS = 10_000; // 100%
@@ -79,7 +79,6 @@ contract Strategy is BaseStrategy {
         address _yVault,
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised
-
     ) public BaseStrategy(_vault) {
         // You can set these parameters on deployment to whatever you want
         // maxReportDelay = 6300;
@@ -128,7 +127,10 @@ contract Strategy is BaseStrategy {
 
     // ----------------- SETTERS -----------------
     // for the management to activate / deactivate incentives functionality
-    function setIsWantIncentivised(bool _isWantIncentivised) external onlyAuthorized {
+    function setIsWantIncentivised(bool _isWantIncentivised)
+        external
+        onlyAuthorized
+    {
         // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
         // to avoid calling it, we use the OR and lazy evaluation
         require(
@@ -139,12 +141,15 @@ contract Strategy is BaseStrategy {
         isWantIncentivised = _isWantIncentivised;
     }
 
-    function setIsInvestmentTokenIncentivised(bool _isInvestmentTokenIncentivised) external onlyAuthorized {
+    function setIsInvestmentTokenIncentivised(
+        bool _isInvestmentTokenIncentivised
+    ) external onlyAuthorized {
         // NOTE: if the variableDebtToken is not incentivised, getIncentivesController() might revert (variableDebtToken won't implement it)
         // to avoid calling it, we use the OR and lazy evaluation
         require(
             !_isInvestmentTokenIncentivised ||
-                address(variableDebtToken.getIncentivesController()) != address(0),
+                address(variableDebtToken.getIncentivesController()) !=
+                address(0),
             "!aToken does not have incentives controller set up"
         );
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
@@ -204,7 +209,6 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-
         uint256 balanceInit = balanceOfWant();
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
@@ -231,7 +235,6 @@ contract Strategy is BaseStrategy {
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-
         uint256 wantBalance = balanceOfWant();
 
         // if we have enough want to deposit more into Aave, we do
@@ -254,7 +257,7 @@ contract Strategy is BaseStrategy {
         uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold); // 60% under liquidation Threshold
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold); // 80% under liquidation Threshold
-  
+
         // decide in which range we are and act accordingly:
         // SUBOPTIMAL(borrow) (e.g. from 0 to 60% liqLTV)
         // HEALTHY(do nothing) (e.g. from 60% to 80% liqLTV)
@@ -290,8 +293,10 @@ contract Strategy is BaseStrategy {
             }
 
             uint256 maxTotalBorrowETH = _investmentTokenToETH(maxTotalBorrowIT);
-            if(totalDebtETH.add(amountToBorrowETH) > maxTotalBorrowETH) {
-                amountToBorrowETH = maxTotalBorrowETH > totalDebtETH ? maxTotalBorrowETH.sub(totalDebtETH) : 0;
+            if (totalDebtETH.add(amountToBorrowETH) > maxTotalBorrowETH) {
+                amountToBorrowETH = maxTotalBorrowETH > totalDebtETH
+                    ? maxTotalBorrowETH.sub(totalDebtETH)
+                    : 0;
             }
 
             // convert to InvestmentToken
@@ -308,12 +313,12 @@ contract Strategy is BaseStrategy {
                 targetLTV.mul(totalCollateralETH).div(MAX_BPS);
             uint256 amountToRepayETH = totalDebtETH.sub(targetDebtETH);
 
-            if(maxProtocolDebt == 0) {
-                amountToRepayETH = totalDebtETH;    
+            if (maxProtocolDebt == 0) {
+                amountToRepayETH = totalDebtETH;
             } else if (currentProtocolDebt > maxProtocolDebt) {
                 amountToRepayETH = Math.max(
                     amountToRepayETH,
-                    currentProtocolDebt - maxProtocolDebt 
+                    currentProtocolDebt - maxProtocolDebt
                 );
             }
 
@@ -353,15 +358,18 @@ contract Strategy is BaseStrategy {
 
     // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
 
-    function harvestTrigger(uint256 callcost) public override view returns (bool) {
+    function harvestTrigger(uint256 callcost)
+        public
+        view
+        override
+        returns (bool)
+    {
         // TODO: take into account super's harvest
         return _checkCooldown();
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        // TODO: Transfer any non-`want` tokens to the new strategy
-        // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
-        liquidatePosition(vault.strategies(address(this)).totalDebt);
+        liquidatePosition(vault.strategies(_newStrategy).totalDebt);
     }
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
@@ -473,7 +481,9 @@ contract Strategy is BaseStrategy {
             // claim rewards
             address[] memory assets = new address[](2);
             assets[0] = isWantIncentivised ? address(aToken) : address(0);
-            assets[1] = isInvestmentTokenIncentivised ? address(variableDebtToken) : address(0);
+            assets[1] = isInvestmentTokenIncentivised
+                ? address(variableDebtToken)
+                : address(0);
             // TODO: check aboves approach work with getRewardsBalance and claimRewards
             uint256 pendingRewards =
                 _incentivesController().getRewardsBalance(
@@ -499,7 +509,7 @@ contract Strategy is BaseStrategy {
         uint256 depositedWant = vault.strategies(address(this)).totalDebt;
         uint256 currentWantInAave = balanceOfAToken();
 
-        if(depositedWant < currentWantInAave) {
+        if (depositedWant < currentWantInAave) {
             _withdrawFromAave(currentWantInAave.sub(depositedWant));
         }
     }
@@ -510,7 +520,7 @@ contract Strategy is BaseStrategy {
         uint256 amountToRepayIT = _calculateAmountToRepay(amount);
         uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
         _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
-        
+
         uint256 balanceUnderlying = balanceOfAToken();
         uint256 looseBalance = balanceOfWant();
         uint256 total = balanceUnderlying.add(looseBalance);
@@ -655,7 +665,7 @@ contract Strategy is BaseStrategy {
     {
         // TODO: should we take into account rewards?
 
-        // This function is used to calculate the maximum amount of debt that the protocol can take 
+        // This function is used to calculate the maximum amount of debt that the protocol can take
         // to keep the cost of capital lower than the set acceptableCosts
         // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
         // and to repay required debt to keep the rates below acceptable costs
@@ -695,13 +705,11 @@ contract Strategy is BaseStrategy {
         vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
         vars.utilizationRate = vars.totalDebt == 0
             ? 0
-            : vars.totalDebt.rayDiv(
-                vars.totalLiquidity
-            );
+            : vars.totalDebt.rayDiv(vars.totalLiquidity);
 
         // Aave's Interest Rate Strategy Parameters (see docs)
         IrsVars memory irsVars;
-        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE(); 
+        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
         irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
         irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
         irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
@@ -715,7 +723,9 @@ contract Strategy is BaseStrategy {
         ) {
             // we solve Aave's Interest Rates equation for sub optimal utilisation rates
             // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
-            vars.targetUtilizationRate = (acceptableCostsRay.sub(irsVars.baseRate))
+            vars.targetUtilizationRate = (
+                acceptableCostsRay.sub(irsVars.baseRate)
+            )
                 .rayMul(irsVars.optimalRate)
                 .rayDiv(irsVars.slope1);
         } else {
@@ -725,7 +735,7 @@ contract Strategy is BaseStrategy {
                 return (vars.totalDebt, 0);
             }
 
-            // we solve Aave's Interest Rates equation for utilisation rates above optimal U 
+            // we solve Aave's Interest Rates equation for utilisation rates above optimal U
             // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
             vars.targetUtilizationRate = (
                 acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
@@ -742,7 +752,7 @@ contract Strategy is BaseStrategy {
 
         return (vars.totalDebt, vars.maxProtocolDebt);
     }
-    
+
     function _borrowingRate(uint256 _additionalBorrow)
         internal
         view
@@ -1100,7 +1110,11 @@ contract Strategy is BaseStrategy {
     {
         // TODO: handle different incentives controller
         if (isWantIncentivised) {
-            require(aToken.getIncentivesController() == variableDebtToken.getIncentivesController(), "!error incentives controller");
+            require(
+                aToken.getIncentivesController() ==
+                    variableDebtToken.getIncentivesController(),
+                "!error incentives controller"
+            );
             return aToken.getIncentivesController();
         } else {
             return IAaveIncentivesController(0);

@@ -22,6 +22,8 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
 
     # Send some profit to yvETH
     weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
+    
+    # TODO: check profits before and after
     strategy.harvest({"from": gov})
     print_debug(yvETH, strategy, lp)
 

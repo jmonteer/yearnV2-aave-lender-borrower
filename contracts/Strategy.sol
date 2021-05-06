@@ -59,7 +59,8 @@ contract Strategy is BaseStrategy {
     bool public isInvestmentTokenIncentivised;
 
     // max interest rate we can afford to pay for borrowing investment token
-    uint256 public acceptableCostsRay = 1e25; // 1%
+    // amount in Ray (1e27 = 100%)
+    uint256 public acceptableCostsRay = type(uint256).max; // default: infinite
 
     // Aave's referral code
     uint16 internal referral;
@@ -70,8 +71,10 @@ contract Strategy is BaseStrategy {
     // Warning LTV: ratio at which we will repay
     uint256 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
+    // support
     uint256 internal constant MAX_BPS = 10_000; // 100%
 
+    // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
 
     constructor(
@@ -98,8 +101,8 @@ contract Strategy is BaseStrategy {
             );
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
 
-        isWantIncentivised = _isWantIncentivised;
-        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
+        _setIsWantIncentivised(_isWantIncentivised);
+        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
         referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
         maxTotalBorrowIT = type(uint256).max;
@@ -127,32 +130,19 @@ contract Strategy is BaseStrategy {
 
     // ----------------- SETTERS -----------------
     // for the management to activate / deactivate incentives functionality
-    function setIsWantIncentivised(bool _isWantIncentivised)
+     function setIsWantIncentivised(bool _isWantIncentivised)
         external
         onlyAuthorized
     {
-        // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
-        // to avoid calling it, we use the OR and lazy evaluation
-        require(
-            !_isWantIncentivised ||
-                address(aToken.getIncentivesController()) != address(0),
-            "!aToken does not have incentives controller set up"
-        );
-        isWantIncentivised = _isWantIncentivised;
+        _setIsWantIncentivised(_isWantIncentivised);
     }
+    
+
 
     function setIsInvestmentTokenIncentivised(
         bool _isInvestmentTokenIncentivised
     ) external onlyAuthorized {
-        // NOTE: if the variableDebtToken is not incentivised, getIncentivesController() might revert (variableDebtToken won't implement it)
-        // to avoid calling it, we use the OR and lazy evaluation
-        require(
-            !_isInvestmentTokenIncentivised ||
-                address(variableDebtToken.getIncentivesController()) !=
-                address(0),
-            "!aToken does not have incentives controller set up"
-        );
-        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
+        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
     }
 
     function setMaxTotalBorrowIT(uint256 _maxTotalBorrowIT)
@@ -179,7 +169,17 @@ contract Strategy is BaseStrategy {
 
     function setYVault(IVault _yVault) external onlyAuthorized {
         require(address(_yVault) != address(0));
-        // retrieve and set investmentToken
+
+        uint256 amountToRepayIT = _valueOfInvestment(); // we will repay the full amount of InvestmentToken
+        _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
+        _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
+    
+        // we are going to stop using these tokens so we need to be sure we have all at 0 balance
+        require(balanceOfInvestmentToken() == 0);
+        require(balanceOfDebt() == 0);
+        require(_balanceOfYShares() == 0);
+
+        // set new investment Token
         investmentToken = IERC20(IVault(_yVault).token());
 
         // retrieve variableDebtToken
@@ -188,7 +188,11 @@ contract Strategy is BaseStrategy {
                 address(investmentToken)
             );
 
+        // set variableDebtToken
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
+
+        // change Investment Vault
+        yVault = _yVault;
     }
 
     function setAcceptableCosts(uint256 _acceptableCostsRay)
@@ -479,12 +483,20 @@ contract Strategy is BaseStrategy {
             _sellAAVEForWant(aaveBalance);
 
             // claim rewards
-            address[] memory assets = new address[](2);
-            assets[0] = isWantIncentivised ? address(aToken) : address(0);
-            assets[1] = isInvestmentTokenIncentivised
-                ? address(variableDebtToken)
-                : address(0);
-            // TODO: check aboves approach work with getRewardsBalance and claimRewards
+            // only add to assets those assets that are incentivised
+            address[] memory assets;
+            if(isInvestmentTokenIncentivised && isWantIncentivised) {
+                assets = new address[](2);
+                assets[0] = address(aToken);
+                assets[1] = address(variableDebtToken);
+            } else if (isInvestmentTokenIncentivised) {
+                assets = new address[](1);
+                assets[0] = address(variableDebtToken);
+            } else if (isWantIncentivised) {
+                assets = new address[](1);
+                assets[0] = address(aToken);
+            }
+
             uint256 pendingRewards =
                 _incentivesController().getRewardsBalance(
                     assets,
@@ -612,7 +624,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _checkCooldown() internal view returns (bool) {
-        if (!isWantIncentivised || !isInvestmentTokenIncentivised) {
+        if (!isWantIncentivised && !isInvestmentTokenIncentivised) {
             return false;
         }
 
@@ -868,6 +880,46 @@ contract Strategy is BaseStrategy {
         returns (uint256)
     {
         return liquidationThreshold.mul(warningLTVMultiplier).div(MAX_BPS);
+    }
+
+    function _setIsWantIncentivised(bool _isWantIncentivised)
+        internal
+    {
+        // NOTE: if the aToken is not incentivised, getIncentivesController() might revert (aToken won't implement it)
+        // to avoid calling it, we use the OR and lazy evaluation
+        require(
+            !_isWantIncentivised ||
+                address(aToken.getIncentivesController()) != address(0),
+            "!aToken does not have incentives controller set up"
+        );
+
+        require(
+            _isWantIncentivised ||
+                address(aToken.getIncentivesController()) ==
+                address(0),
+            "!aToken is incentivised"
+        );
+
+        isWantIncentivised = _isWantIncentivised;
+    }
+
+    function _setIsInvestmentTokenIncentivised(bool _isInvestmentTokenIncentivised) internal {
+        // NOTE: if the variableDebtToken is not incentivised, getIncentivesController() might revert (variableDebtToken won't implement it)
+        // to avoid calling it, we use the OR and lazy evaluation
+        require(
+            !_isInvestmentTokenIncentivised ||
+                address(variableDebtToken.getIncentivesController()) !=
+                address(0),
+            "!variableDebtToken does not have incentives controller set up"
+        );
+
+        require(
+            _isInvestmentTokenIncentivised ||
+                address(variableDebtToken.getIncentivesController()) ==
+                address(0),
+            "!variableDebtToken is incentivised"
+        );
+        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
     }
 
     // ----------------- TOKEN CONVERSIONS -----------------

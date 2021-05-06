@@ -63,6 +63,22 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
 
+def test_rewards_off(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
+    with reverts("!aToken is incentivised"):
+        strategy.setIsWantIncentivised(False)
+
+    with reverts("!variableDebtToken is incentivised"):
+        strategy.setIsInvestmentTokenIncentivised(False)
+
+def test_rewards_off_deploy(strategist, keeper, vault, Strategy, gov, yvETH):
+    with reverts("!aToken is incentivised"):
+        strategist.deploy(Strategy, vault, yvETH, False, True)
+        
+    with reverts("!variableDebtToken is incentivised"):
+        strategist.deploy(Strategy, vault, yvETH, True, False)
+
+    with reverts("!aToken is incentivised"):
+        strategist.deploy(Strategy, vault, yvETH, False, False)
 
 def get_incentives_controller(strat):
     atoken = Contract(strat.aToken())
@@ -75,13 +91,3 @@ def get_lending_pool():
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
     lp = Contract(a_provider.getLendingPool())
     return lp
-
-
-def print_debug(yvETH, strategy, lp):
-    yvETH_balance = yvETH.balanceOf(strategy)
-    yvETH_pps = yvETH.pricePerShare()
-    totalDebtETH = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
-
-    print(f"yvETH balance {yvETH_balance} with pps {yvETH_pps}")
-    yvETH_value = (yvETH_balance * yvETH_pps) / 1e18
-    print(f"yvETH value {yvETH_value/1e18} vs {totalDebtETH/1e18}\n")

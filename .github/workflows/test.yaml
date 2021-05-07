@@ -61,7 +61,7 @@ jobs:
       env:
         ETHERSCAN_TOKEN: MW5CQA6QK5YMJXP2WP3RA36HM5A7RA1IHA
         WEB3_INFURA_PROJECT_ID: b7821200399e4be2b4e5dbdf06fbe85b
-      run: |
+      run: | 
         brownie test ./tests/test_change_yVault.py -s
         brownie test ./tests/test_happy_path.py -s
         brownie test ./tests/test_huge_debt_increase.py -s
@@ -72,4 +72,4 @@ jobs:
         brownie test ./tests/test_revoke.py -s
         brownie test ./tests/test_rewards.py -s
         brownie test ./tests/test_shutdown.py -s
-        brownie test ./tests/test_debt_ratio.py -s
+

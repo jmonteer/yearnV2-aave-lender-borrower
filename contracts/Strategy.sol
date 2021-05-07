@@ -364,10 +364,33 @@ contract Strategy is BaseStrategy {
         // NOTE: repayment amount is in investmentToken
         // NOTE: collateral and debt calcs are done in ETH
 
-        uint256 amountToWithdraw = _amountNeeded.sub(balance);
+        uint256 amountToWithdrawWant = _amountNeeded.sub(balance);
 
         // it will return the free amount of want
-        uint256 totalAssets = _withdrawFromAave(amountToWithdraw);
+        uint256 withdrawnWant = _withdrawWantFromAave(amountToWithdrawWant);
+        // we check if we withdrew less than expected AND should buy investmentToken with want (realising losses)
+        if (
+            amountToWithdrawWant > withdrawnWant &&
+            balanceOfDebt() > 0 &&
+            balanceOfInvestmentToken().add(_valueOfInvestment()) == 0
+        ) {
+            // using this part of code will result in losses but it is necessary to unlock full collateral in case of wind down
+            // we calculate how much want we need to fulfill the want request
+            uint256 remainingAmountWant =
+                amountToWithdrawWant.sub(withdrawnWant);
+            // then calculate how much InvestmentToken we need to unlock collateral
+            uint256 amountToRepayIT =
+                _calculateAmountToRepay(remainingAmountWant);
+            // we buy investmentToken with Want
+            _buyInvestmentTokenWithWant(amountToRepayIT);
+            // we repay debt to actually unlock collateral
+            // after this, balanceOfDebt should be 0
+            _repayInvestmentTokenDebt(amountToRepayIT);
+            require(balanceOfDebt() == 0);
+            // then we try withdraw once more
+            _withdrawWantFromAave(remainingAmountWant);
+        }
+        uint256 totalAssets = balanceOfWant();
         if (_amountNeeded > totalAssets) {
             _liquidatedAmount = totalAssets;
             _loss = _amountNeeded.sub(totalAssets);
@@ -581,12 +604,13 @@ contract Strategy is BaseStrategy {
         uint256 currentWantInAave = balanceOfAToken();
 
         if (depositedWant < currentWantInAave) {
-            _withdrawFromAave(currentWantInAave.sub(depositedWant));
+            _withdrawWantFromAave(currentWantInAave.sub(depositedWant));
         }
     }
 
     //withdraw an amount including any want balance
-    function _withdrawFromAave(uint256 amount) internal returns (uint256) {
+    function _withdrawWantFromAave(uint256 amount) internal returns (uint256) {
+        uint256 balanceOfWantInit = balanceOfWant();
         // We first repay whatever we need to repay to keep healthy ratios
         uint256 amountToRepayIT = _calculateAmountToRepay(amount);
         uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
@@ -607,11 +631,7 @@ contract Strategy is BaseStrategy {
             Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
 
         uint256 toWithdraw = Math.min(amount.sub(looseBalance), maxWithdrawal);
-        emit Withdrawing(
-            amount.sub(looseBalance),
-            _maxWithdrawal(),
-            want.balanceOf(address(aToken))
-        );
+
         if (toWithdraw > 0) {
             _checkAllowance(
                 address(_lendingPool()),
@@ -621,11 +641,12 @@ contract Strategy is BaseStrategy {
             _lendingPool().withdraw(address(want), toWithdraw, address(this));
         }
 
-        looseBalance = balanceOfWant();
-        return looseBalance;
+        uint256 balanceOfWantEnd = balanceOfWant();
+        return
+            balanceOfWantEnd > balanceOfWantInit
+                ? balanceOfWantEnd.sub(balanceOfWantInit)
+                : 0;
     }
-
-    event Withdrawing(uint256 amount, uint256 maxWithdrawal, uint256 liquidity);
 
     function _maxWithdrawal() internal view returns (uint256) {
         (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) =
@@ -968,6 +989,40 @@ contract Strategy is BaseStrategy {
         _checkAllowance(address(router), path[0], _amount);
 
         router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
+    }
+
+    function _buyInvestmentTokenWithWant(uint256 _amount) internal {
+        if (_amount == 0) {
+            return;
+        }
+
+        if (address(investmentToken) == address(want)) {
+            return;
+        }
+
+        address[] memory path;
+        if (
+            address(want) == address(WETH) ||
+            address(investmentToken) == address(WETH)
+        ) {
+            path = new address[](2);
+            path[0] = address(want);
+            path[1] = address(investmentToken);
+        } else {
+            path = new address[](3);
+            path[0] = address(want);
+            path[1] = address(WETH);
+            path[2] = address(investmentToken);
+        }
+        _checkAllowance(address(router), path[0], _amount);
+
+        router.swapTokensForExactTokens(
+            _amount,
+            type(uint256).max,
+            path,
+            address(this),
+            now
+        );
     }
 
     function _toETH(uint256 _amount, address asset)

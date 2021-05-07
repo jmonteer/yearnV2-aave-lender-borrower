@@ -14,7 +14,6 @@ import {
 import "./WadRayMath.sol";
 
 import "./interfaces/ISwap.sol";
-import "./interfaces/IWETH.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/aave/IAToken.sol";
 import "./interfaces/IOptionalERC20.sol";
@@ -24,7 +23,6 @@ import "./interfaces/aave/ILendingPool.sol";
 import "./interfaces/aave/IVariableDebtToken.sol";
 import "./interfaces/aave/IProtocolDataProvider.sol";
 import "./interfaces/aave/IAaveIncentivesController.sol";
-import "./interfaces/aave/ILendingPoolAddressesProvider.sol";
 import "./interfaces/aave/IReserveInterestRateStrategy.sol";
 
 contract Strategy is BaseStrategy {
@@ -37,10 +35,10 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 public investmentToken;
 
-    ISwap public router =
+    ISwap public constant router =
         ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
 
-    IStakedAave public stkAave =
+    IStakedAave public constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
     IProtocolDataProvider public constant protocolDataProvider =
         IProtocolDataProvider(
@@ -50,7 +48,8 @@ contract Strategy is BaseStrategy {
 
     address public constant WETH =
         address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+    address public constant AAVE =
+        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     // true if this token is incentivised
     bool public isWantIncentivised;

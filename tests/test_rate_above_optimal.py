@@ -23,7 +23,7 @@ def test_rate_above_optimal(
 
     currentCost = (
         get_lp()
-        .getReserveData(strategy.investmentToken())
+        .getReserveData(Contract(strategy.yVault()).token())
         .dict()["currentVariableBorrowRate"]
     )
     print(f"current rate: {currentCost/1e27}")

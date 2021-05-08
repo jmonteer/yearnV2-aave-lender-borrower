@@ -16,6 +16,7 @@ import "./WadRayMath.sol";
 import "./interfaces/ISwap.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/aave/IAToken.sol";
+import "./libraries/SupportStructs.sol";
 import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/aave/IStakedAave.sol";
 import "./interfaces/aave/IPriceOracle.sol";
@@ -30,46 +31,41 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
     using WadRayMath for uint256;
-
-    IAToken public aToken;
-    IVault public yVault;
-    IERC20 public investmentToken;
-
-    ISwap public constant router =
-        ISwap(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
-
-    IStakedAave public constant stkAave =
-        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-    IProtocolDataProvider public constant protocolDataProvider =
-        IProtocolDataProvider(
-            address(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d)
-        );
-    IVariableDebtToken public variableDebtToken;
-
-    address public constant WETH =
-        address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address public constant AAVE =
-        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-
     // true if this token is incentivised
     bool public isWantIncentivised;
     bool public isInvestmentTokenIncentivised;
-
-    // max interest rate we can afford to pay for borrowing investment token
-    // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
 
     // Aave's referral code
     uint16 internal referral;
 
     // NOTE: LTV = Loan-To-Value = debt/collateral
     // Target LTV: ratio up to which which we will borrow
-    uint256 public targetLTVMultiplier = 6_000; // 60% of liquidation LTV
+    uint16 internal targetLTVMultiplier = 6_000; // 60% of liquidation LTV
     // Warning LTV: ratio at which we will repay
-    uint256 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
+    uint16 internal warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
     // support
-    uint256 internal constant MAX_BPS = 10_000; // 100%
+    uint16 internal constant MAX_BPS = 10_000; // 100%
+
+    IAToken public aToken;
+    IVariableDebtToken public variableDebtToken;
+    IVault public yVault;
+    IERC20 internal investmentToken;
+
+    ISwap internal router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
+    IStakedAave internal stkAave =
+        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+
+    IProtocolDataProvider internal protocolDataProvider =
+        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+
+    address internal WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+
+    // max interest rate we can afford to pay for borrowing investment token
+    // amount in Ray (1e27 = 100%)
+    uint256 public acceptableCostsRay = 1e27;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
@@ -135,17 +131,12 @@ contract Strategy is BaseStrategy {
 
     // ----------------- SETTERS -----------------
     // for the management to activate / deactivate incentives functionality
-    function setIsWantIncentivised(bool _isWantIncentivised)
-        external
-        onlyAuthorized
-    {
-        _setIsWantIncentivised(_isWantIncentivised);
-    }
-
-    function setIsInvestmentTokenIncentivised(
+    function setIncentivisedTokens(
+        bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised
     ) external onlyAuthorized {
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
+        _setIsWantIncentivised(_isWantIncentivised);
     }
 
     function setMaxTotalBorrowIT(uint256 _maxTotalBorrowIT)
@@ -159,33 +150,36 @@ contract Strategy is BaseStrategy {
         referral = _referral;
     }
 
-    function setTargetMultiplier(uint256 _multiplier) external onlyAuthorized {
-        require(_multiplier < MAX_BPS && _multiplier < warningLTVMultiplier);
-        warningLTVMultiplier = _multiplier;
-    }
-
-    function setWarningMultiplier(uint256 _multiplier) external onlyAuthorized {
-        require(_multiplier < MAX_BPS && _multiplier > targetLTVMultiplier);
-        warningLTVMultiplier = _multiplier;
+    function setLTVMultipliers(
+        uint16 _targetLTVMultiplier,
+        uint16 _warningLTVMultiplier
+    ) external onlyAuthorized {
+        require(
+            _targetLTVMultiplier < MAX_BPS &&
+                _warningLTVMultiplier < MAX_BPS &&
+                _warningLTVMultiplier > _targetLTVMultiplier
+        );
+        targetLTVMultiplier = _targetLTVMultiplier;
+        warningLTVMultiplier = _warningLTVMultiplier;
     }
 
     function setYVault(IVault _yVault) external onlyAuthorized {
         if (balanceOfDebt() != 0) {
-            uint256 amountToRepayIT = _valueOfInvestment(); // we will repay the full amount of InvestmentToken
-            _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
+            _withdrawFromYVault(_valueOfInvestment()); // we withdraw the full amount from investmentToken vault
             _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
 
             // we sell profits
-            uint256 balanceIT = balanceOfInvestmentToken();
-            if (balanceIT > 0) {
-                _sellInvestmentForWant(balanceIT);
+            if (balanceOfInvestmentToken() > 0) {
+                _sellInvestmentForWant(balanceOfInvestmentToken());
             }
         }
 
         // we are going to stop using these tokens so we need to be sure we have all 0 balance
-        require(balanceOfInvestmentToken() == 0);
-        require(balanceOfDebt() == 0);
-        require(yVault.balanceOf(address(this)) == 0);
+        require(
+            balanceOfInvestmentToken() == 0 &&
+                balanceOfDebt() == 0 &&
+                yVault.balanceOf(address(this)) == 0
+        );
 
         // set new investment Token
         investmentToken = IERC20(IVault(_yVault).token());
@@ -316,7 +310,17 @@ contract Strategy is BaseStrategy {
             // convert to InvestmentToken
             uint256 amountToBorrowIT =
                 _fromETH(amountToBorrowETH, address(investmentToken));
-            _borrowInvestmentToken(amountToBorrowIT);
+
+            if (amountToBorrowIT > 0) {
+                _lendingPool().borrow(
+                    address(investmentToken),
+                    amountToBorrowIT,
+                    2,
+                    referral,
+                    address(this)
+                );
+            }
+
             _depositInYVault();
         } else if (
             currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
@@ -385,11 +389,14 @@ contract Strategy is BaseStrategy {
             // we repay debt to actually unlock collateral
             // after this, balanceOfDebt should be 0
             _repayInvestmentTokenDebt(amountToRepayIT);
-            require(balanceOfDebt() == 0);
+
             // then we try withdraw once more
             _withdrawWantFromAave(remainingAmountWant);
         }
+
         uint256 totalAssets = balanceOfWant();
+        emit Withdrawing(amountToWithdrawWant, withdrawnWant, totalAssets);
+
         if (_amountNeeded > totalAssets) {
             _liquidatedAmount = totalAssets;
             _loss = _amountNeeded.sub(totalAssets);
@@ -397,6 +404,12 @@ contract Strategy is BaseStrategy {
             _liquidatedAmount = _amountNeeded;
         }
     }
+
+    event Withdrawing(
+        uint256 amountToWithdrawWant,
+        uint256 withdrawnWant,
+        uint256 assets
+    );
 
     function prepareMigration(address _newStrategy) internal override {
         // in yearn-vaults, the oldStrategy's totalDebt is set to 0 before calling migrate on BaseStrategy
@@ -462,24 +475,6 @@ contract Strategy is BaseStrategy {
         IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
     }
 
-    struct CalcMaxDebtLocalVars {
-        uint256 availableLiquidity;
-        uint256 totalStableDebt;
-        uint256 totalVariableDebt;
-        uint256 totalDebt;
-        uint256 utilizationRate;
-        uint256 totalLiquidity;
-        uint256 targetUtilizationRate;
-        uint256 maxProtocolDebt;
-    }
-
-    struct IrsVars {
-        uint256 optimalRate;
-        uint256 baseRate;
-        uint256 slope1;
-        uint256 slope2;
-    }
-
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
 
     function _withdrawFromYVault(uint256 _amountIT) internal returns (uint256) {
@@ -495,20 +490,6 @@ contract Strategy is BaseStrategy {
             ); // we add 1 to avoid rounding errors
         yVault.withdraw(sharesToWithdraw);
         return balanceOfInvestmentToken().sub(balancePrior);
-    }
-
-    function _borrowInvestmentToken(uint256 amount) internal {
-        if (amount == 0) {
-            return;
-        }
-
-        _lendingPool().borrow(
-            address(investmentToken),
-            amount,
-            2,
-            referral,
-            address(this)
-        );
     }
 
     function _repayInvestmentTokenDebt(uint256 amount) internal {
@@ -616,20 +597,14 @@ contract Strategy is BaseStrategy {
         _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
 
         uint256 balanceUnderlying = balanceOfAToken();
-        uint256 looseBalance = balanceOfWant();
-        uint256 total = balanceUnderlying.add(looseBalance);
-        if (amount > total) {
-            amount = total;
-        }
-
-        if (looseBalance >= amount) {
-            return amount;
+        if (amount > balanceUnderlying) {
+            amount = balanceUnderlying;
         }
 
         uint256 maxWithdrawal =
             Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
 
-        uint256 toWithdraw = Math.min(amount.sub(looseBalance), maxWithdrawal);
+        uint256 toWithdraw = Math.min(amount, maxWithdrawal);
 
         if (toWithdraw > 0) {
             _checkAllowance(
@@ -691,6 +666,9 @@ contract Strategy is BaseStrategy {
 
         if (ltvAfterWithdrawal <= warningLTV) {
             return 0;
+        } else if (ltvAfterWithdrawal == type(uint256).max) {
+            // we are withdrawing 100% of collateral
+            return _fromETH(totalDebtETH, address(investmentToken));
         }
 
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
@@ -770,7 +748,7 @@ contract Strategy is BaseStrategy {
         // and to repay required debt to keep the rates below acceptable costs
 
         // Hack to avoid the stack too deep compiler error.
-        CalcMaxDebtLocalVars memory vars;
+        SupportStructs.CalcMaxDebtLocalVars memory vars;
         vars.availableLiquidity = 0;
         vars.totalStableDebt = 0;
         vars.totalVariableDebt = 0;
@@ -807,7 +785,7 @@ contract Strategy is BaseStrategy {
             : vars.totalDebt.rayDiv(vars.totalLiquidity);
 
         // Aave's Interest Rate Strategy Parameters (see docs)
-        IrsVars memory irsVars;
+        SupportStructs.IrsVars memory irsVars;
         irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
         irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
         irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
@@ -903,7 +881,8 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        return liquidationThreshold.mul(targetLTVMultiplier).div(MAX_BPS);
+        return
+            liquidationThreshold.mul(uint256(targetLTVMultiplier)).div(MAX_BPS);
     }
 
     function _getWarningLTV(uint256 liquidationThreshold)
@@ -911,7 +890,10 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        return liquidationThreshold.mul(warningLTVMultiplier).div(MAX_BPS);
+        return
+            liquidationThreshold.mul(uint256(warningLTVMultiplier)).div(
+                MAX_BPS
+            );
     }
 
     function _setIsWantIncentivised(bool _isWantIncentivised) internal {

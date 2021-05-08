@@ -8,9 +8,6 @@ def test_increase_costs(
     lp = get_lending_pool()
     po = get_price_oracle()
     ic = get_incentives_controller(strategy)
-    aToken = Contract(strategy.aToken())
-    vdToken = Contract(strategy.variableDebtToken())
-    stkAave = Contract(strategy.stkAave())
 
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})

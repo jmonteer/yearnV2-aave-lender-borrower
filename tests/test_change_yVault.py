@@ -7,7 +7,6 @@ def test_change_yVault(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale,
     ic = get_incentives_controller(strategy)
     aToken = Contract(strategy.aToken())
     vdToken = Contract(strategy.variableDebtToken())
-    stkAave = Contract(strategy.stkAave())
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
     vault_susd = Contract("0xa5cA62D95D24A4a350983D5B8ac4EB8638887396")
 

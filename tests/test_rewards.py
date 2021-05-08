@@ -7,7 +7,7 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     ic = get_incentives_controller(strategy)
     aToken = Contract(strategy.aToken())
     vdToken = Contract(strategy.variableDebtToken())
-    stkAave = Contract(strategy.stkAave())
+    stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})
@@ -72,10 +72,14 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
     strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
 
     with reverts():
-        strategy.setIsWantIncentivised(True)
+        strategy.setIncentivisedTokens(True, True)
 
     with reverts():
-        strategy.setIsInvestmentTokenIncentivised(True)
+        strategy.setIncentivisedTokens(True, False)
+
+    with reverts():
+        strategy.setIncentivisedTokens(False, True)
+
 
 
 def get_incentives_controller(strat):

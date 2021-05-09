@@ -1,6 +1,7 @@
 import pytest
 from brownie import chain, Wei, Contract
 
+
 def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
     prev_balance = wbtc.balanceOf(wbtc_whale)
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})

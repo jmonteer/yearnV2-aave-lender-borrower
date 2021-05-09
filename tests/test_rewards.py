@@ -81,7 +81,6 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
         strategy.setIncentivisedTokens(False, True)
 
 
-
 def get_incentives_controller(strat):
     atoken = Contract(strat.aToken())
     ic = Contract(atoken.getIncentivesController())

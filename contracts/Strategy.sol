@@ -205,7 +205,6 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
-
     function prepareReturn(uint256 _debtOutstanding)
         internal
         override
@@ -222,9 +221,8 @@ contract Strategy is BaseStrategy {
         // claim rewards from yVault
         _takeVaultProfit();
 
-        // claim interest from lending
-        _takeLendingProfit();
-
+        // // claim interest from lending
+        // _takeLendingProfit();
         uint256 balanceOfWant = balanceOfWant();
         if (balanceOfWant > balanceInit) {
             _profit = balanceOfWant.sub(balanceInit);
@@ -368,7 +366,7 @@ contract Strategy is BaseStrategy {
         // NOTE: collateral and debt calcs are done in ETH
 
         uint256 amountToWithdrawWant = _amountNeeded.sub(balance);
-
+        // emit Repay(0, 0, amountToWithdrawWant);
         // it will return the free amount of want
         uint256 withdrawnWant = _withdrawWantFromAave(amountToWithdrawWant);
         // we check if we withdrew less than expected AND should buy investmentToken with want (realising losses)
@@ -395,7 +393,7 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 totalAssets = balanceOfWant();
-        emit Withdrawing(amountToWithdrawWant, withdrawnWant, totalAssets);
+        // emit Withdrawing(amountToWithdrawWant, withdrawnWant, totalAssets);
 
         if (_amountNeeded > totalAssets) {
             _liquidatedAmount = totalAssets;
@@ -485,9 +483,9 @@ contract Strategy is BaseStrategy {
         uint256 balancePrior = balanceOfInvestmentToken();
         uint256 sharesToWithdraw =
             Math.min(
-                _investmentTokenToYShares(_amountIT).add(1),
+                _investmentTokenToYShares(_amountIT),
                 yVault.balanceOf(address(this))
-            ); // we add 1 to avoid rounding errors
+            );
         yVault.withdraw(sharesToWithdraw);
         return balanceOfInvestmentToken().sub(balancePrior);
     }
@@ -501,9 +499,10 @@ contract Strategy is BaseStrategy {
 
         uint256 balance = balanceOfInvestmentToken();
         amount = Math.min(amount, balance);
-
         uint256 toRepayIT =
             Math.min(_fromETH(debtInETH, address(investmentToken)), amount);
+
+        // emit Repay(balance, toRepayIT, debtInETH);
         _checkAllowance(
             address(_lendingPool()),
             address(investmentToken),
@@ -539,6 +538,8 @@ contract Strategy is BaseStrategy {
             if (stkAaveBalance > 0 && _checkCooldown()) {
                 stkAave.redeem(address(this), stkAaveBalance);
             }
+
+            // TODO: claim staking rewards
 
             // sell AAVE for want
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
@@ -584,7 +585,12 @@ contract Strategy is BaseStrategy {
         uint256 currentWantInAave = balanceOfAToken();
 
         if (depositedWant < currentWantInAave) {
-            _withdrawWantFromAave(currentWantInAave.sub(depositedWant));
+            uint256 toWithdraw =
+                Math.min(
+                    currentWantInAave.sub(depositedWant),
+                    _maxWithdrawal()
+                );
+            _withdrawWantFromAave(1);
         }
     }
 
@@ -665,6 +671,7 @@ contract Strategy is BaseStrategy {
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
 
         if (ltvAfterWithdrawal <= warningLTV) {
+            // no need of repaying debt because the LTV is ok
             return 0;
         } else if (ltvAfterWithdrawal == type(uint256).max) {
             // we are withdrawing 100% of collateral
@@ -675,6 +682,9 @@ contract Strategy is BaseStrategy {
         // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
         // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
         uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
+        if (newTargetDebt > totalDebtETH) {
+            return 0;
+        }
         return
             _fromETH(totalDebtETH.sub(newTargetDebt), address(investmentToken));
     }

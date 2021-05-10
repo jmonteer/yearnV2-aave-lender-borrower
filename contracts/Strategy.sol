@@ -163,39 +163,40 @@ contract Strategy is BaseStrategy {
         warningLTVMultiplier = _warningLTVMultiplier;
     }
 
-    function setYVault(IVault _yVault) external onlyAuthorized {
-        if (balanceOfDebt() != 0) {
-            _withdrawFromYVault(_valueOfInvestment()); // we withdraw the full amount from investmentToken vault
-            _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
+    // TODO: add max loss
+    // function setYVault(IVault _yVault) external onlyAuthorized {
+    //     if (balanceOfDebt() != 0) {
+    //         _withdrawFromYVault(_valueOfInvestment()); // we withdraw the full amount from investmentToken vault
+    //         _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
 
-            // we sell profits
-            if (balanceOfInvestmentToken() > 0) {
-                _sellInvestmentForWant(balanceOfInvestmentToken());
-            }
-        }
+    //         // we sell profits
+    //         if (balanceOfInvestmentToken() > 0) {
+    //             _sellInvestmentForWant(balanceOfInvestmentToken());
+    //         }
+    //     }
 
-        // we are going to stop using these tokens so we need to be sure we have all 0 balance
-        require(
-            balanceOfInvestmentToken() == 0 &&
-                balanceOfDebt() == 0 &&
-                yVault.balanceOf(address(this)) == 0
-        );
+    //     // we are going to stop using these tokens so we need to be sure we have all 0 balance
+    //     require(
+    //         balanceOfInvestmentToken() == 0 &&
+    //             balanceOfDebt() == 0 &&
+    //             yVault.balanceOf(address(this)) == 0
+    //     );
 
-        // set new investment Token
-        investmentToken = IERC20(IVault(_yVault).token());
+    //     // set new investment Token
+    //     investmentToken = IERC20(IVault(_yVault).token());
 
-        // retrieve variableDebtToken
-        (, , address _variableDebtToken) =
-            protocolDataProvider.getReserveTokensAddresses(
-                address(investmentToken)
-            );
+    //     // retrieve variableDebtToken
+    //     (, , address _variableDebtToken) =
+    //         protocolDataProvider.getReserveTokensAddresses(
+    //             address(investmentToken)
+    //         );
 
-        // set variableDebtToken
-        variableDebtToken = IVariableDebtToken(_variableDebtToken);
+    //     // set variableDebtToken
+    //     variableDebtToken = IVariableDebtToken(_variableDebtToken);
 
-        // change Investment Vault
-        yVault = _yVault;
-    }
+    //     // change Investment Vault
+    //     yVault = _yVault;
+    // }
 
     function setAcceptableCosts(uint256 _acceptableCostsRay)
         external
@@ -219,15 +220,19 @@ contract Strategy is BaseStrategy {
         _claimRewards();
 
         // claim rewards from yVault
-        _takeVaultProfit();
+        _takeVaultProfit(); // TODO: test this
 
-        // // claim interest from lending
-        // _takeLendingProfit();
+        // claim interest from lending
+        _takeLendingProfit();
+
         uint256 balanceOfWant = balanceOfWant();
+
         if (balanceOfWant > balanceInit) {
             _profit = balanceOfWant.sub(balanceInit);
         }
 
+        // _debtOutstanign = 10btc
+        // balanceOfWant = 3045sats
         // if the vault is claiming repayment of debt
         if (_debtOutstanding > 0) {
             uint256 _amountFreed = 0;
@@ -244,7 +249,7 @@ contract Strategy is BaseStrategy {
 
         // if we have enough want to deposit more into Aave, we do
         // NOTE: we do not skip the rest of the function if we don't as it may need to repay or take on more debt
-        if (_debtOutstanding < wantBalance) {
+        if (wantBalance > _debtOutstanding) {
             uint256 amountToDeposit = wantBalance.sub(_debtOutstanding);
             _depositToAave(amountToDeposit);
         }
@@ -258,6 +263,12 @@ contract Strategy is BaseStrategy {
             uint256 ltv,
             uint256 healthFactor
         ) = _getAaveUserAccountData();
+
+        // if there is no want deposited into aave, don't do nothing
+        // this means no debt is borrowed from aave too
+        if (totalCollateralETH == 0) {
+            return;
+        }
 
         uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold); // 60% under liquidation Threshold
@@ -276,7 +287,7 @@ contract Strategy is BaseStrategy {
         (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
             _calculateMaxDebt();
 
-        if (currentLTV < targetLTV && currentProtocolDebt < maxProtocolDebt) {
+        if (targetLTV > currentLTV && currentProtocolDebt < maxProtocolDebt) {
             // SUBOPTIMAL RATIO: our current Loan-to-Value is lower than what we want
             // AND costs are lower than our max acceptable costs
 
@@ -284,7 +295,7 @@ contract Strategy is BaseStrategy {
             uint256 targetDebtETH =
                 totalCollateralETH.mul(targetLTV).div(MAX_BPS);
 
-            uint256 amountToBorrowETH = targetDebtETH.sub(totalDebtETH);
+            uint256 amountToBorrowETH = targetDebtETH.sub(totalDebtETH); // safe bc we checked ratios
             amountToBorrowETH = Math.min(
                 availableBorrowsETH,
                 amountToBorrowETH
@@ -366,24 +377,32 @@ contract Strategy is BaseStrategy {
         // NOTE: collateral and debt calcs are done in ETH
 
         uint256 amountToWithdrawWant = _amountNeeded.sub(balance);
-        // emit Repay(0, 0, amountToWithdrawWant);
+
+        // We first repay whatever we need to repay to keep healthy ratios
+        uint256 amountToRepayIT = _calculateAmountToRepay(amountToWithdrawWant);
+        uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
+        _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
+
         // it will return the free amount of want
-        uint256 withdrawnWant = _withdrawWantFromAave(amountToWithdrawWant);
+        _withdrawWantFromAave(amountToWithdrawWant);
+
+        balance = balanceOfWant();
         // we check if we withdrew less than expected AND should buy investmentToken with want (realising losses)
         if (
-            amountToWithdrawWant > withdrawnWant &&
-            balanceOfDebt() > 0 &&
-            balanceOfInvestmentToken().add(_valueOfInvestment()) == 0
+            _amountNeeded > balance &&
+            balanceOfDebt() > 0 && // still some debt remaining
+            balanceOfInvestmentToken().add(_valueOfInvestment()) == 0 // but no capital to repay
         ) {
             // using this part of code will result in losses but it is necessary to unlock full collateral in case of wind down
             // we calculate how much want we need to fulfill the want request
-            uint256 remainingAmountWant =
-                amountToWithdrawWant.sub(withdrawnWant);
+            uint256 remainingAmountWant = _amountNeeded.sub(balance);
             // then calculate how much InvestmentToken we need to unlock collateral
             uint256 amountToRepayIT =
                 _calculateAmountToRepay(remainingAmountWant);
+
             // we buy investmentToken with Want
             _buyInvestmentTokenWithWant(amountToRepayIT);
+
             // we repay debt to actually unlock collateral
             // after this, balanceOfDebt should be 0
             _repayInvestmentTokenDebt(amountToRepayIT);
@@ -393,7 +412,6 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 totalAssets = balanceOfWant();
-        // emit Withdrawing(amountToWithdrawWant, withdrawnWant, totalAssets);
 
         if (_amountNeeded > totalAssets) {
             _liquidatedAmount = totalAssets;
@@ -402,12 +420,6 @@ contract Strategy is BaseStrategy {
             _liquidatedAmount = _amountNeeded;
         }
     }
-
-    event Withdrawing(
-        uint256 amountToWithdrawWant,
-        uint256 withdrawnWant,
-        uint256 assets
-    );
 
     function prepareMigration(address _newStrategy) internal override {
         // in yearn-vaults, the oldStrategy's totalDebt is set to 0 before calling migrate on BaseStrategy
@@ -495,26 +507,27 @@ contract Strategy is BaseStrategy {
             return;
         }
 
-        (, uint256 debtInETH, , , , ) = _getAaveUserAccountData();
-
+        // we cannot pay more than loose balance
         uint256 balance = balanceOfInvestmentToken();
         amount = Math.min(amount, balance);
-        uint256 toRepayIT =
-            Math.min(_fromETH(debtInETH, address(investmentToken)), amount);
+        // we cannot pay more than we owe
+        amount = Math.min(balanceOfDebt(), amount);
 
-        // emit Repay(balance, toRepayIT, debtInETH);
         _checkAllowance(
             address(_lendingPool()),
             address(investmentToken),
-            toRepayIT
+            amount
         );
 
-        _lendingPool().repay(
-            address(investmentToken),
-            toRepayIT,
-            2,
-            address(this)
-        );
+        if (amount > 0) {
+            uint256 repaid =
+                _lendingPool().repay(
+                    address(investmentToken),
+                    amount,
+                    uint256(2),
+                    address(this)
+                );
+        }
     }
 
     function _depositInYVault() internal {
@@ -580,28 +593,19 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _takeLendingProfit() internal {
+    function _takeLendingProfit() public {
         uint256 depositedWant = vault.strategies(address(this)).totalDebt;
         uint256 currentWantInAave = balanceOfAToken();
 
-        if (depositedWant < currentWantInAave) {
-            uint256 toWithdraw =
-                Math.min(
-                    currentWantInAave.sub(depositedWant),
-                    _maxWithdrawal()
-                );
-            _withdrawWantFromAave(1);
+        if (currentWantInAave > depositedWant) {
+            uint256 toWithdraw = currentWantInAave.sub(depositedWant);
+            _withdrawWantFromAave(toWithdraw);
+            require(false);
         }
     }
 
     //withdraw an amount including any want balance
-    function _withdrawWantFromAave(uint256 amount) internal returns (uint256) {
-        uint256 balanceOfWantInit = balanceOfWant();
-        // We first repay whatever we need to repay to keep healthy ratios
-        uint256 amountToRepayIT = _calculateAmountToRepay(amount);
-        uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
-        _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
-
+    function _withdrawWantFromAave(uint256 amount) public {
         uint256 balanceUnderlying = balanceOfAToken();
         if (amount > balanceUnderlying) {
             amount = balanceUnderlying;
@@ -609,9 +613,8 @@ contract Strategy is BaseStrategy {
 
         uint256 maxWithdrawal =
             Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
-
+        emit Collat(maxWithdrawal, amount);
         uint256 toWithdraw = Math.min(amount, maxWithdrawal);
-
         if (toWithdraw > 0) {
             _checkAllowance(
                 address(_lendingPool()),
@@ -620,18 +623,17 @@ contract Strategy is BaseStrategy {
             );
             _lendingPool().withdraw(address(want), toWithdraw, address(this));
         }
-
-        uint256 balanceOfWantEnd = balanceOfWant();
-        return
-            balanceOfWantEnd > balanceOfWantInit
-                ? balanceOfWantEnd.sub(balanceOfWantInit)
-                : 0;
     }
+
+    event Collat(uint256 a, uint256 b);
 
     function _maxWithdrawal() internal view returns (uint256) {
         (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) =
             _getAaveUserAccountData();
         uint256 minCollateralETH = totalDebtETH.mul(MAX_BPS).div(ltv);
+        if (minCollateralETH > totalCollateralETH) {
+            return 0;
+        }
         return
             _fromETH(totalCollateralETH.sub(minCollateralETH), address(want));
     }
@@ -658,13 +660,14 @@ contract Strategy is BaseStrategy {
         uint256 amountToWithdrawETH = _toETH(amount, address(want));
         // calculate the collateral that we are leaving after withdrawing
         uint256 newCollateral =
-            amountToWithdrawETH < totalCollateralETH
+            totalCollateralETH > amountToWithdrawETH
                 ? totalCollateralETH.sub(amountToWithdrawETH)
                 : 0;
         uint256 ltvAfterWithdrawal =
             newCollateral > 0
                 ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
                 : type(uint256).max;
+
         // check if the new LTV is in UNHEALTHY range
         // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
         // this is not true but the effect will be the same
@@ -674,7 +677,7 @@ contract Strategy is BaseStrategy {
             // no need of repaying debt because the LTV is ok
             return 0;
         } else if (ltvAfterWithdrawal == type(uint256).max) {
-            // we are withdrawing 100% of collateral
+            // we are withdrawing 100% of collateral so we need to repay full debt
             return _fromETH(totalDebtETH, address(investmentToken));
         }
 
@@ -682,9 +685,12 @@ contract Strategy is BaseStrategy {
         // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
         // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
         uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
+
+        // if newTargetDebt is higher, we don't need to repay anything
         if (newTargetDebt > totalDebtETH) {
             return 0;
         }
+
         return
             _fromETH(totalDebtETH.sub(newTargetDebt), address(investmentToken));
     }

@@ -13,6 +13,8 @@ def test_revoke_strategy_from_vault(
 
     vault.revokeStrategy(strategy.address, {"from": gov})
     strategy.harvest()
+    assert strategy.balanceOfDebt() == 0
+    assert strategy.balanceOfAToken() == 0
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 

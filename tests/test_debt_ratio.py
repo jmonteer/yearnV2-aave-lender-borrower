@@ -35,12 +35,12 @@ def test_decrease(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvET
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
 
-    # Go all the way up to 10k
+    previousParams = vault.strategies(strategy).dict()
+    prevDebt = strategy.balanceOfDebt()
+    prevAToken = strategy.balanceOfAToken()
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
-    strategy.harvest({"from": gov})
+    tx = strategy.harvest({'from': gov})
 
     # 15 because it should be less than 20 but there is some profit.
     assert vault.strategies(strategy).dict()["totalDebt"] < 15 * 1e8
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
-
-    assert False

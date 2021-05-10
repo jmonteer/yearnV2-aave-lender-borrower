@@ -528,6 +528,8 @@ contract Strategy is BaseStrategy {
                     address(this)
                 );
         }
+
+        require(false); // HERE it fails with RPC crap
     }
 
     function _depositInYVault() internal {
@@ -600,7 +602,6 @@ contract Strategy is BaseStrategy {
         if (currentWantInAave > depositedWant) {
             uint256 toWithdraw = currentWantInAave.sub(depositedWant);
             _withdrawWantFromAave(toWithdraw);
-            require(false);
         }
     }
 

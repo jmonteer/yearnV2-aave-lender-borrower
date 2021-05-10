@@ -663,6 +663,7 @@ contract Strategy is BaseStrategy {
             totalCollateralETH > amountToWithdrawETH
                 ? totalCollateralETH.sub(amountToWithdrawETH)
                 : 0;
+
         uint256 ltvAfterWithdrawal =
             newCollateral > 0
                 ? totalDebtETH.mul(MAX_BPS).div(newCollateral)

@@ -26,7 +26,18 @@ def test_rate_above_optimal(
         .dict()["currentVariableBorrowRate"]
     )
     print(f"current rate: {currentCost/1e27}")
-    strategy.setAcceptableCosts(currentCost * 1.01, {"from": strategy.strategist()})
+
+    strategy.setStrategyParams(
+        strategy.targetLTVMultiplier(),
+        strategy.warningLTVMultiplier(),
+        currentCost * 1.01,
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        {"from": strategy.strategist()},
+    )
+
     strategy.harvest({"from": gov})
     assert vdweth.balanceOf(strategy) > 0
 

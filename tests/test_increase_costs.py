@@ -18,8 +18,16 @@ def test_increase_costs(
     # put acceptablecosts just below currentCost
     acceptable = currentCost - 1e21
 
-    strategy.setAcceptableCosts(acceptable)
-
+    strategy.setStrategyParams(
+        strategy.targetLTVMultiplier(),
+        strategy.warningLTVMultiplier(),
+        acceptable,
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        {"from": strategy.strategist()},
+    )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
     weth.transfer(yvETH, Wei("10000 ether"), {"from": weth_whale})
 

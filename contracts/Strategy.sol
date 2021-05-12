@@ -32,6 +32,13 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
     using WadRayMath for uint256;
+
+    // max interest rate we can afford to pay for borrowing investment token
+    // amount in Ray (1e27 = 100%)
+    uint256 public acceptableCostsRay = 1e27;
+
+    // max amount to borrow. used to manually limit amount (for yVault to keep APY)
+    uint256 public maxTotalBorrowIT;
     // true if this token is incentivised
     bool public isWantIncentivised;
     bool public isInvestmentTokenIncentivised;
@@ -41,9 +48,9 @@ contract Strategy is BaseStrategy {
 
     // NOTE: LTV = Loan-To-Value = debt/collateral
     // Target LTV: ratio up to which which we will borrow
-    uint16 internal targetLTVMultiplier = 6_000; // 60% of liquidation LTV
+    uint16 public targetLTVMultiplier = 6_000; // 60% of liquidation LTV
     // Warning LTV: ratio at which we will repay
-    uint16 internal warningLTVMultiplier = 8_000; // 80% of liquidation LTV
+    uint16 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
     // support
     uint16 internal constant MAX_BPS = 10_000; // 100%
@@ -63,13 +70,6 @@ contract Strategy is BaseStrategy {
 
     address internal WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-
-    // max interest rate we can afford to pay for borrowing investment token
-    // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
-
-    // max amount to borrow. used to manually limit amount (for yVault to keep APY)
-    uint256 public maxTotalBorrowIT;
 
     constructor(
         address _vault,
@@ -113,8 +113,9 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
+        // not taking into account aave rewards (they are staked and not accesible)
         return
-            balanceOfWant()
+            balanceOfWant() // balance of want
                 .add(balanceOfAToken()) // asset suplied as collateral
                 .add(
                 _fromETH(
@@ -131,36 +132,15 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- SETTERS -----------------
-    // for the management to activate / deactivate incentives functionality
-    function setIncentivisedTokens(
+    // we put all together to save contract bytecode (!)
+    function setStrategyParams(
+        uint16 _targetLTVMultiplier,
+        uint16 _warningLTVMultiplier,
+        uint256 _acceptableCostsRay,
+        uint16 _aaveReferral,
+        uint256 _maxTotalBorrowIT,
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised
-    ) external onlyAuthorized {
-        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
-        _setIsWantIncentivised(_isWantIncentivised);
-    }
-
-    function setAcceptableCosts(uint256 _acceptableCostsRay)
-        external
-        onlyAuthorized
-    {
-        acceptableCostsRay = _acceptableCostsRay;
-    }
-
-    function setMaxTotalBorrowIT(uint256 _maxTotalBorrowIT)
-        external
-        onlyAuthorized
-    {
-        maxTotalBorrowIT = _maxTotalBorrowIT;
-    }
-
-    function setReferralCode(uint16 _referral) external onlyAuthorized {
-        referral = _referral;
-    }
-
-    function setLTVMultipliers(
-        uint16 _targetLTVMultiplier,
-        uint16 _warningLTVMultiplier
     ) external onlyAuthorized {
         require(
             _targetLTVMultiplier < MAX_BPS &&
@@ -169,6 +149,13 @@ contract Strategy is BaseStrategy {
         );
         targetLTVMultiplier = _targetLTVMultiplier;
         warningLTVMultiplier = _warningLTVMultiplier;
+        acceptableCostsRay = _acceptableCostsRay;
+        maxTotalBorrowIT = _maxTotalBorrowIT;
+        if (_aaveReferral != 0) {
+            referral = _aaveReferral;
+        }
+        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
+        _setIsWantIncentivised(_isWantIncentivised);
     }
 
     function setYVault(IVault _yVault, uint256 maxLoss)
@@ -226,7 +213,7 @@ contract Strategy is BaseStrategy {
         _claimRewards();
 
         // claim rewards from yVault
-        _takeVaultProfit(); // TODO: test this
+        _takeVaultProfit();
 
         // claim interest from lending
         _takeLendingProfit();
@@ -556,7 +543,11 @@ contract Strategy is BaseStrategy {
                 stkAave.redeem(address(this), stkAaveBalance);
             }
 
-            // TODO: claim staking rewards
+            // claim AAVE rewards
+            uint256 pendingAAVE = stkAave.getTotalRewardsBalance(address(this));
+            if (pendingAAVE > 0) {
+                stkAave.claimRewards(address(this), pendingAAVE);
+            }
 
             // sell AAVE for want
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));

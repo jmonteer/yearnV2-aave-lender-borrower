@@ -46,11 +46,14 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
 
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
     assert accumulatedRewards > 0
+    assert stkAave.getTotalRewardsBalance(strategy) > 0
+
     tx = strategy.harvest({"from": gov})
 
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
     assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]
+    assert tx.events["RewardsClaimed"][0]["amount"] > 0
     assert tx.events["Harvested"]["profit"] > 0
 
     # let harvest trigger during cooldown period
@@ -59,6 +62,7 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
 
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
+    assert len(tx.events["RewardsClaimed"]) == 2
 
 
 def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
@@ -69,13 +73,40 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
     strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
 
     with reverts():
-        strategy.setIncentivisedTokens(True, True)
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            True,
+            True,
+            {"from": strategy.strategist()},
+        )
 
     with reverts():
-        strategy.setIncentivisedTokens(True, False)
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            True,
+            False,
+            {"from": strategy.strategist()},
+        )
 
     with reverts():
-        strategy.setIncentivisedTokens(False, True)
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            False,
+            True,
+            {"from": strategy.strategist()},
+        )
 
 
 def get_incentives_controller(awbtc):

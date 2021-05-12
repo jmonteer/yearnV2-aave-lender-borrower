@@ -231,6 +231,8 @@ contract Strategy is BaseStrategy {
             _debtPayment = Math.min(_debtOutstanding, _amountFreed);
             if (_debtPayment > _profit) {
                 _debtPayment = _debtPayment.sub(_profit);
+            } else {
+                _debtPayment = 0; // profit is enough, we report the profit for the vault to take it
             }
             if (_loss > 0) {
                 _profit = 0;

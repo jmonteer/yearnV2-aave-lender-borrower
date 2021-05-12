@@ -14,9 +14,7 @@ def test_increase_costs(
     chain.mine(1)
 
     # instead of increasing costs we reduce our acceptable costs
-    currentCost = lp.getReserveData(weth).dict()[
-        "currentVariableBorrowRate"
-    ]
+    currentCost = lp.getReserveData(weth).dict()["currentVariableBorrowRate"]
     # put acceptablecosts just below currentCost
     acceptable = currentCost - 1e21
 
@@ -30,14 +28,13 @@ def test_increase_costs(
     assert previousDebt > vdweth.balanceOf(strategy)
 
     assert (
-        lp.getReserveData(weth).dict()[
-            "currentVariableBorrowRate"
-        ]
+        lp.getReserveData(weth).dict()["currentVariableBorrowRate"]
         < strategy.acceptableCostsRay()
     )
     weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
 
     vault.withdraw({"from": wbtc_whale})
+
 
 def get_lending_pool():
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")

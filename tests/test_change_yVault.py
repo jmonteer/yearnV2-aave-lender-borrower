@@ -2,7 +2,9 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_change_yVault(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, awbtc, vdweth):
+def test_change_yVault(
+    vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, awbtc, vdweth
+):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
     snx = Contract(vault_snx.token())
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
@@ -26,7 +28,11 @@ def test_change_yVault(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale,
     assert vault_snx.balanceOf(strategy) > 0
 
     # to offset interest rates and be able to repay full debt
-    snx.transfer(vault_snx, Wei("10 ether"), {"from": "0xA1d7b2d891e3A1f9ef4bBC5be20630C2FEB1c470"})
+    snx.transfer(
+        vault_snx,
+        Wei("10 ether"),
+        {"from": "0xA1d7b2d891e3A1f9ef4bBC5be20630C2FEB1c470"},
+    )
     strategy.setYVault(yvETH, 10_000)
 
     strategy.harvest({"from": gov})

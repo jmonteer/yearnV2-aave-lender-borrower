@@ -57,17 +57,21 @@ def yvETH():
 def weth():
     yield Contract("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 
+
 @pytest.fixture
 def vdweth():
     yield Contract("0xF63B34710400CAd3e044cFfDcAb00a0f32E33eCf")
+
 
 @pytest.fixture
 def wbtc():
     yield Contract("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599")
 
+
 @pytest.fixture
 def awbtc():
     yield Contract("0x9ff58f4fFB29fA2266Ab25e75e2A8b3503311656")
+
 
 @pytest.fixture
 def wbtc_whale(accounts):

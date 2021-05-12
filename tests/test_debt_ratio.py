@@ -34,7 +34,7 @@ def test_decrease(vault, strategy, gov, wbtc, wbtc_whale):
     chain.mine(1)
 
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
-    tx = strategy.harvest({'from': gov})
+    tx = strategy.harvest({"from": gov})
 
     # 15 because it should be less than 20 but there is some profit.
     assert vault.strategies(strategy).dict()["totalDebt"] < 15 * 1e8

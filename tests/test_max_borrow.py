@@ -28,6 +28,6 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
         {"from": strategy.strategist()},
-    )    
+    )
     strategy.harvest({"from": gov})
     assert vdweth.balanceOf(strategy) == Wei("2 ether")

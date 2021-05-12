@@ -19,8 +19,8 @@ def test_increase_costs(
     print_status(lp, strategy)
     # we reduce the target to half and set ratios just below current ratios
     strategy.setStrategyParams(
-        targetLTV/2,
-        targetLTV/1.01,
+        targetLTV / 2,
+        targetLTV / 1.01,
         strategy.acceptableCostsRay(),
         0,
         strategy.maxTotalBorrowIT(),
@@ -39,7 +39,7 @@ def test_increase_costs(
     # we reduce the target to half and set target ratio = 0
     strategy.setStrategyParams(
         0,
-        targetLTV/3, # trigger to set to rebalance
+        targetLTV / 3,  # trigger to set to rebalance
         strategy.acceptableCostsRay(),
         0,
         strategy.maxTotalBorrowIT(),
@@ -53,8 +53,10 @@ def test_increase_costs(
     tx = strategy.harvest({"from": gov})
     assert vdweth.balanceOf(strategy) == 0
     assert wbtc.balanceOf(strategy) == 0
-    assert awbtc.balanceOf(strategy) > 0 # want is deposited as collateral
-    assert awbtc.balanceOf(strategy) == strategy.estimatedTotalAssets() # no debt, no investments
+    assert awbtc.balanceOf(strategy) > 0  # want is deposited as collateral
+    assert (
+        awbtc.balanceOf(strategy) == strategy.estimatedTotalAssets()
+    )  # no debt, no investments
 
     print_status(lp, strategy)
     weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
@@ -68,12 +70,13 @@ def get_lending_pool():
     lp = Contract(a_provider.getLendingPool())
     return lp
 
+
 def print_status(lp, strategy):
     userDict = lp.getUserAccountData(strategy).dict()
-    currentDebtETH = userDict['totalDebtETH']
-    currentCollateralETH = userDict['totalCollateralETH']
-    currentLTV = currentDebtETH*10_000/currentCollateralETH
-    print("Current Debt ETH", currentDebtETH/1e18)
-    print("Current Collateral ETH", currentCollateralETH/1e18)
-    print("CurrentLTV", currentLTV/100, "%")
+    currentDebtETH = userDict["totalDebtETH"]
+    currentCollateralETH = userDict["totalCollateralETH"]
+    currentLTV = currentDebtETH * 10_000 / currentCollateralETH
+    print("Current Debt ETH", currentDebtETH / 1e18)
+    print("Current Collateral ETH", currentCollateralETH / 1e18)
+    print("CurrentLTV", currentLTV / 100, "%")
     print()

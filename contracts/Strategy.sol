@@ -229,11 +229,6 @@ contract Strategy is BaseStrategy {
             uint256 _amountFreed = 0;
             (_amountFreed, _loss) = liquidatePosition(_debtOutstanding);
             _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-            if (_debtPayment > _profit) {
-                _debtPayment = _debtPayment.sub(_profit);
-            } else {
-                _debtPayment = 0; // profit is enough, we report the profit for the vault to take it
-            }
             if (_loss > 0) {
                 _profit = 0;
             }
@@ -369,9 +364,8 @@ contract Strategy is BaseStrategy {
         }
 
         // NOTE: amountNeeded is in want
-        // NOTE: amountToWithdraw is in want.
         // NOTE: repayment amount is in investmentToken
-        // NOTE: collateral and debt calcs are done in ETH
+        // NOTE: collateral and debt calcs are done in ETH (always, see Aave docs)
 
         // We first repay whatever we need to repay to keep healthy ratios
         uint256 amountToRepayIT = _calculateAmountToRepay(_amountNeeded);
@@ -407,10 +401,10 @@ contract Strategy is BaseStrategy {
 
         uint256 totalAssets = balanceOfWant();
         if (_amountNeeded > totalAssets) {
-            _liquidatedAmount = totalAssets.sub(previousBalance);
+            _liquidatedAmount = totalAssets;
             _loss = _amountNeeded.sub(totalAssets);
         } else {
-            _liquidatedAmount = _amountNeeded.sub(previousBalance);
+            _liquidatedAmount = _amountNeeded;
         }
     }
 

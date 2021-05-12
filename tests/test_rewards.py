@@ -46,7 +46,6 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
 
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
     assert accumulatedRewards > 0
-    assert stkAave.getTotalRewardsBalance(strategy) > 0
 
     tx = strategy.harvest({"from": gov})
 
@@ -59,10 +58,14 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     # let harvest trigger during cooldown period
     chain.sleep(5 * 24 * 3600)  # 5 days
     chain.mine(1)
+    # not working because rewards are off at the moment (expected to come back)
+    # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
+    # assert stkAave.getTotalRewardsBalance(strategy) > 0 
 
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
-    assert len(tx.events["RewardsClaimed"]) == 2
+    # rewards off (expected to come back)
+    # assert len(tx.events["RewardsClaimed"]) == 2
 
 
 def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):

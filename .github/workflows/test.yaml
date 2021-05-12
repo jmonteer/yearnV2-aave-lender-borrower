@@ -63,13 +63,16 @@ jobs:
         WEB3_INFURA_PROJECT_ID: b7821200399e4be2b4e5dbdf06fbe85b
       run: |
         brownie test ./tests/test_change_yVault.py -s
+        brownie test ./tests/test_debt_ratio.py -s
         brownie test ./tests/test_happy_path.py -s
         brownie test ./tests/test_huge_debt_increase.py -s
         brownie test ./tests/test_increase_costs.py -s
         brownie test ./tests/test_max_borrow.py -s
         brownie test ./tests/test_migration.py -s
         brownie test ./tests/test_operation.py -s
+        brownie test ./tests/test_rate_above_optimal.py -s
+        brownie test ./tests/test_ratios.py -s
+        brownie test ./tests/test_revoke_with_profit.py -s
         brownie test ./tests/test_revoke.py -s
         brownie test ./tests/test_rewards.py -s
         brownie test ./tests/test_shutdown.py -s
-        brownie test ./tests/test_debt_ratio.py -s

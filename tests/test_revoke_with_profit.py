@@ -2,7 +2,7 @@ import pytest
 from brownie import Wei
 
 
-def test_revoke_strategy_from_vault(
+def test_revoke_with_profit(
     token,
     vault,
     strategy,
@@ -24,7 +24,7 @@ def test_revoke_strategy_from_vault(
     vault.revokeStrategy(strategy, {"from": gov})
     strategy.harvest()
 
-    assert vault.strategies(strategy).dict()["totalGain"] > 0
-    assert vault.strategies(strategy).dict()["totalDebt"] == 0
     assert vdweth.balanceOf(strategy) == 0
     assert awbtc.balanceOf(strategy) == 0
+    assert vault.strategies(strategy).dict()["totalGain"] > 0
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0

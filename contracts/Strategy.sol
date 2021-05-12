@@ -3,6 +3,7 @@ pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
 import {BaseStrategy} from "@yearnvaults/contracts/BaseStrategy.sol";
+
 import "@openzeppelin/contracts/math/Math.sol";
 
 import {
@@ -47,8 +48,8 @@ contract Strategy is BaseStrategy {
     // support
     uint16 internal constant MAX_BPS = 10_000; // 100%
 
-    IAToken public aToken;
-    IVariableDebtToken public variableDebtToken;
+    IAToken internal aToken;
+    IVariableDebtToken internal variableDebtToken;
     IVault public yVault;
     IERC20 internal investmentToken;
 
@@ -139,6 +140,13 @@ contract Strategy is BaseStrategy {
         _setIsWantIncentivised(_isWantIncentivised);
     }
 
+    function setAcceptableCosts(uint256 _acceptableCostsRay)
+        external
+        onlyAuthorized
+    {
+        acceptableCostsRay = _acceptableCostsRay;
+    }
+
     function setMaxTotalBorrowIT(uint256 _maxTotalBorrowIT)
         external
         onlyAuthorized
@@ -163,46 +171,44 @@ contract Strategy is BaseStrategy {
         warningLTVMultiplier = _warningLTVMultiplier;
     }
 
-    // TODO: add max loss
-    // function setYVault(IVault _yVault) external onlyAuthorized {
-    //     if (balanceOfDebt() != 0) {
-    //         _withdrawFromYVault(_valueOfInvestment()); // we withdraw the full amount from investmentToken vault
-    //         _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
-
-    //         // we sell profits
-    //         if (balanceOfInvestmentToken() > 0) {
-    //             _sellInvestmentForWant(balanceOfInvestmentToken());
-    //         }
-    //     }
-
-    //     // we are going to stop using these tokens so we need to be sure we have all 0 balance
-    //     require(
-    //         balanceOfInvestmentToken() == 0 &&
-    //             balanceOfDebt() == 0 &&
-    //             yVault.balanceOf(address(this)) == 0
-    //     );
-
-    //     // set new investment Token
-    //     investmentToken = IERC20(IVault(_yVault).token());
-
-    //     // retrieve variableDebtToken
-    //     (, , address _variableDebtToken) =
-    //         protocolDataProvider.getReserveTokensAddresses(
-    //             address(investmentToken)
-    //         );
-
-    //     // set variableDebtToken
-    //     variableDebtToken = IVariableDebtToken(_variableDebtToken);
-
-    //     // change Investment Vault
-    //     yVault = _yVault;
-    // }
-
-    function setAcceptableCosts(uint256 _acceptableCostsRay)
+    function setYVault(IVault _yVault, uint256 maxLoss)
         external
         onlyAuthorized
     {
-        acceptableCostsRay = _acceptableCostsRay;
+        if (balanceOfDebt() != 0) {
+            yVault.withdraw(
+                yVault.balanceOf(address(this)),
+                address(this),
+                maxLoss
+            ); // we withdraw the full amount from investmentToken vault
+            _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
+
+            // we sell profits
+            if (balanceOfInvestmentToken() > 0) {
+                _sellInvestmentForWant(balanceOfInvestmentToken());
+            }
+        }
+        // we are going to stop using these tokens so we need to be sure we have all 0 balance
+        require(
+            balanceOfInvestmentToken() == 0 &&
+                balanceOfDebt() == 0 &&
+                yVault.balanceOf(address(this)) == 0
+        );
+
+        // set new investment Token
+        investmentToken = IERC20(IVault(_yVault).token());
+
+        // retrieve variableDebtToken
+        (, , address _variableDebtToken) =
+            protocolDataProvider.getReserveTokensAddresses(
+                address(investmentToken)
+            );
+
+        // set variableDebtToken
+        variableDebtToken = IVariableDebtToken(_variableDebtToken);
+
+        // change Investment Vault
+        yVault = _yVault;
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -231,13 +237,14 @@ contract Strategy is BaseStrategy {
             _profit = balanceOfWant.sub(balanceInit);
         }
 
-        // _debtOutstanign = 10btc
-        // balanceOfWant = 3045sats
         // if the vault is claiming repayment of debt
         if (_debtOutstanding > 0) {
             uint256 _amountFreed = 0;
             (_amountFreed, _loss) = liquidatePosition(_debtOutstanding);
             _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+            if (_debtPayment > _profit) {
+                _debtPayment = _debtPayment.sub(_profit);
+            }
             if (_loss > 0) {
                 _profit = 0;
             }
@@ -366,6 +373,7 @@ contract Strategy is BaseStrategy {
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
         uint256 balance = balanceOfWant();
+        uint256 previousBalance = balance;
         // if we have enough want to take care of the liquidatePosition without actually liquidating positons
         if (balance >= _amountNeeded) {
             return (_amountNeeded, 0);
@@ -376,15 +384,13 @@ contract Strategy is BaseStrategy {
         // NOTE: repayment amount is in investmentToken
         // NOTE: collateral and debt calcs are done in ETH
 
-        uint256 amountToWithdrawWant = _amountNeeded.sub(balance);
-
         // We first repay whatever we need to repay to keep healthy ratios
-        uint256 amountToRepayIT = _calculateAmountToRepay(amountToWithdrawWant);
+        uint256 amountToRepayIT = _calculateAmountToRepay(_amountNeeded);
         uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
         _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
 
         // it will return the free amount of want
-        _withdrawWantFromAave(amountToWithdrawWant);
+        _withdrawWantFromAave(_amountNeeded);
 
         balance = balanceOfWant();
         // we check if we withdrew less than expected AND should buy investmentToken with want (realising losses)
@@ -397,8 +403,7 @@ contract Strategy is BaseStrategy {
             // we calculate how much want we need to fulfill the want request
             uint256 remainingAmountWant = _amountNeeded.sub(balance);
             // then calculate how much InvestmentToken we need to unlock collateral
-            uint256 amountToRepayIT =
-                _calculateAmountToRepay(remainingAmountWant);
+            amountToRepayIT = _calculateAmountToRepay(remainingAmountWant);
 
             // we buy investmentToken with Want
             _buyInvestmentTokenWithWant(amountToRepayIT);
@@ -412,12 +417,11 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 totalAssets = balanceOfWant();
-
         if (_amountNeeded > totalAssets) {
-            _liquidatedAmount = totalAssets;
+            _liquidatedAmount = totalAssets.sub(previousBalance);
             _loss = _amountNeeded.sub(totalAssets);
         } else {
-            _liquidatedAmount = _amountNeeded;
+            _liquidatedAmount = _amountNeeded.sub(previousBalance);
         }
     }
 
@@ -528,8 +532,6 @@ contract Strategy is BaseStrategy {
                     address(this)
                 );
         }
-
-        require(false); // HERE it fails with RPC crap
     }
 
     function _depositInYVault() internal {
@@ -580,6 +582,7 @@ contract Strategy is BaseStrategy {
                     assets,
                     address(this)
                 );
+
             if (pendingRewards > 0) {
                 _incentivesController().claimRewards(
                     assets,
@@ -595,7 +598,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _takeLendingProfit() public {
+    function _takeLendingProfit() internal {
         uint256 depositedWant = vault.strategies(address(this)).totalDebt;
         uint256 currentWantInAave = balanceOfAToken();
 
@@ -606,7 +609,7 @@ contract Strategy is BaseStrategy {
     }
 
     //withdraw an amount including any want balance
-    function _withdrawWantFromAave(uint256 amount) public {
+    function _withdrawWantFromAave(uint256 amount) internal {
         uint256 balanceUnderlying = balanceOfAToken();
         if (amount > balanceUnderlying) {
             amount = balanceUnderlying;
@@ -614,7 +617,7 @@ contract Strategy is BaseStrategy {
 
         uint256 maxWithdrawal =
             Math.min(_maxWithdrawal(), want.balanceOf(address(aToken)));
-        emit Collat(maxWithdrawal, amount);
+
         uint256 toWithdraw = Math.min(amount, maxWithdrawal);
         if (toWithdraw > 0) {
             _checkAllowance(
@@ -625,8 +628,6 @@ contract Strategy is BaseStrategy {
             _lendingPool().withdraw(address(want), toWithdraw, address(this));
         }
     }
-
-    event Collat(uint256 a, uint256 b);
 
     function _maxWithdrawal() internal view returns (uint256) {
         (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) =
@@ -848,19 +849,19 @@ contract Strategy is BaseStrategy {
         return (vars.totalDebt, vars.maxProtocolDebt);
     }
 
-    function balanceOfWant() public view returns (uint256) {
+    function balanceOfWant() internal view returns (uint256) {
         return want.balanceOf(address(this));
     }
 
-    function balanceOfInvestmentToken() public view returns (uint256) {
+    function balanceOfInvestmentToken() internal view returns (uint256) {
         return investmentToken.balanceOf(address(this));
     }
 
-    function balanceOfAToken() public view returns (uint256) {
+    function balanceOfAToken() internal view returns (uint256) {
         return aToken.balanceOf(address(this));
     }
 
-    function balanceOfDebt() public view returns (uint256) {
+    function balanceOfDebt() internal view returns (uint256) {
         return variableDebtToken.balanceOf(address(this));
     }
 

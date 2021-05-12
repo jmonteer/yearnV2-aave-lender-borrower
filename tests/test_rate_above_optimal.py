@@ -9,9 +9,8 @@ def get_lp():
 
 
 def test_rate_above_optimal(
-    vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
+    vault, strategy, gov, wbtc, wbtc_whale, vdweth, weth_whale, yvETH
 ):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(20 * 1e8, {"from": wbtc_whale})
 
@@ -19,7 +18,7 @@ def test_rate_above_optimal(
     increase_interest()
 
     strategy.harvest({"from": gov})
-    assert strategy.balanceOfDebt() == 0
+    assert vdweth.balanceOf(strategy) == 0
 
     currentCost = (
         get_lp()
@@ -29,7 +28,7 @@ def test_rate_above_optimal(
     print(f"current rate: {currentCost/1e27}")
     strategy.setAcceptableCosts(currentCost * 1.01, {"from": strategy.strategist()})
     strategy.harvest({"from": gov})
-    assert strategy.balanceOfDebt() > 0
+    assert vdweth.balanceOf(strategy) > 0
 
 
 def increase_interest():

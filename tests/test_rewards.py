@@ -2,11 +2,10 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    lp = get_lending_pool()
-    ic = get_incentives_controller(strategy)
-    aToken = Contract(strategy.aToken())
-    vdToken = Contract(strategy.variableDebtToken())
+def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
+    ic = get_incentives_controller(awbtc)
+    aToken = awbtc
+    vdToken = vdweth
     stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
@@ -45,14 +44,12 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     chain.mine(1)
     assert strategy.harvestTrigger(0) == True
 
-    previousStkAave = stkAave.balanceOf(strategy)
-    previousAssets = strategy.estimatedTotalAssets()
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
+    assert accumulatedRewards > 0
     tx = strategy.harvest({"from": gov})
 
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
-    assert strategy.estimatedTotalAssets() > previousAssets
     assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]
     assert tx.events["Harvested"]["profit"] > 0
 
@@ -81,14 +78,6 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
         strategy.setIncentivisedTokens(False, True)
 
 
-def get_incentives_controller(strat):
-    atoken = Contract(strat.aToken())
-    ic = Contract(atoken.getIncentivesController())
+def get_incentives_controller(awbtc):
+    ic = Contract(awbtc.getIncentivesController())
     return ic
-
-
-def get_lending_pool():
-    pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
-    a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
-    lp = Contract(a_provider.getLendingPool())
-    return lp

@@ -2,7 +2,7 @@ import pytest
 
 
 def test_revoke_strategy_from_vault(
-    token, vault, strategy, wbtc_whale, gov, RELATIVE_APPROX
+    token, vault, strategy, wbtc_whale, gov, RELATIVE_APPROX, vdweth, awbtc
 ):
     amount = 10 * 1e8
     # Deposit to the vault and harvest
@@ -13,8 +13,8 @@ def test_revoke_strategy_from_vault(
 
     vault.revokeStrategy(strategy.address, {"from": gov})
     strategy.harvest()
-    assert strategy.balanceOfDebt() == 0
-    assert strategy.balanceOfAToken() == 0
+    assert vdweth.balanceOf(strategy) == 0
+    assert awbtc.balanceOf(strategy) == 0
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 

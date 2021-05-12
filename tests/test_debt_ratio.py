@@ -3,7 +3,6 @@ from brownie import chain, Wei
 
 
 def test_increase(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(20 * 1e8, {"from": wbtc_whale})
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
@@ -23,8 +22,7 @@ def test_increase(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvET
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
 
 
-def test_decrease(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
+def test_decrease(vault, strategy, gov, wbtc, wbtc_whale):
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(20 * 1e8, {"from": wbtc_whale})
 
@@ -35,9 +33,6 @@ def test_decrease(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvET
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
 
-    previousParams = vault.strategies(strategy).dict()
-    prevDebt = strategy.balanceOfDebt()
-    prevAToken = strategy.balanceOfAToken()
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
     tx = strategy.harvest({'from': gov})
 

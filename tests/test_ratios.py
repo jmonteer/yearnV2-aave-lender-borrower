@@ -1,7 +1,7 @@
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_increase_costs(
+def test_lev_ratios(
     vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth, awbtc
 ):
     lp = get_lending_pool()

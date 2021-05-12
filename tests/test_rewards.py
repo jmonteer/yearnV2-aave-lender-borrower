@@ -60,7 +60,7 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     chain.mine(1)
     # not working because rewards are off at the moment (expected to come back)
     # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
-    # assert stkAave.getTotalRewardsBalance(strategy) > 0 
+    # assert stkAave.getTotalRewardsBalance(strategy) > 0
 
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]

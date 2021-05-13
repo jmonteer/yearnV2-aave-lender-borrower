@@ -16,8 +16,7 @@ def test_change_yVault(
     chain.mine(1)
 
     # to offset interest rates and be able to repay full debt
-    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
-
+    weth.transfer(yvETH, Wei("2 ether"), {"from": weth_whale})
     strategy.setYVault(vault_snx, 0)
 
     assert vault_snx.balanceOf(strategy) == 0

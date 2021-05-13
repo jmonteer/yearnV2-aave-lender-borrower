@@ -71,6 +71,8 @@ contract Strategy is BaseStrategy {
     address internal WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
     address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
+    uint256 internal minThreshold;
+
     constructor(
         address _vault,
         address _yVault,
@@ -92,7 +94,7 @@ contract Strategy is BaseStrategy {
                 address(investmentToken)
             );
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
-
+        minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
         _setIsWantIncentivised(_isWantIncentivised);
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
@@ -196,6 +198,8 @@ contract Strategy is BaseStrategy {
 
         // change Investment Vault
         yVault = _yVault;
+
+        minThreshold = (10**(_yVault.decimals())).div(100); // minThreshold is 0.01 InvestmentToken
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -619,7 +623,8 @@ contract Strategy is BaseStrategy {
     function _maxWithdrawal() internal view returns (uint256) {
         (uint256 totalCollateralETH, uint256 totalDebtETH, , , uint256 ltv, ) =
             _getAaveUserAccountData();
-        uint256 minCollateralETH = totalDebtETH.mul(MAX_BPS).div(ltv);
+        uint256 minCollateralETH =
+            ltv > 0 ? totalDebtETH.mul(MAX_BPS).div(ltv) : totalCollateralETH;
         if (minCollateralETH > totalCollateralETH) {
             return 0;
         }
@@ -682,7 +687,12 @@ contract Strategy is BaseStrategy {
         }
 
         return
-            _fromETH(totalDebtETH.sub(newTargetDebt), address(investmentToken));
+            _fromETH(
+                totalDebtETH.sub(newTargetDebt) < minThreshold
+                    ? totalDebtETH
+                    : totalDebtETH.sub(newTargetDebt),
+                address(investmentToken)
+            );
     }
 
     function _depositToAave(uint256 amount) internal {

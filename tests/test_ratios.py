@@ -10,8 +10,6 @@ def test_lev_ratios(
     vault.deposit(100 * 1e8, {"from": wbtc_whale})
 
     tx = strategy.harvest({"from": gov})
-    chain.sleep(6 * 3600)
-    chain.mine(1)
 
     targetLTV = strategy.targetLTVMultiplier()
     warningLTV = strategy.warningLTVMultiplier()

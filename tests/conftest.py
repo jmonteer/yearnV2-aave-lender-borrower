@@ -106,25 +106,27 @@ def vault(pm, gov, rewards, guardian, management, token):
     vault.setPerformanceFee(0, {"from": gov})
     yield vault
 
+
 @pytest.fixture(scope="function")
 def vault_whale_deposit(vault, wbtc, wbtc_whale):
-    print("Vault total assets:", vault.totalAssets()/(10 ** wbtc.decimals()))
+    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
     deposit_amount = 10 * 1e8
     assert vault.totalAssets() == 0
-    wbtc.approve(vault, 2 ** 256 - 1, {'from': wbtc_whale})
-    vault.deposit(deposit_amount, {'from': wbtc_whale})
+    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
+    vault.deposit(deposit_amount, {"from": wbtc_whale})
     assert wbtc.balanceOf(vault) == deposit_amount
-    print("Vault total assets:", vault.totalAssets()/(10 ** wbtc.decimals()))
+    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
 
-    yield 
+    yield
 
     # after test, withdraw
-    if(vault.balanceOf(wbtc_whale) > 0):
+    if vault.balanceOf(wbtc_whale) > 0:
         print("Withdrawing 100% from vault")
-        vault.withdraw({'from': wbtc_whale})
+        vault.withdraw({"from": wbtc_whale})
         assert vault.totalAssets() == 0
 
-    print("Vault total assets:", vault.totalAssets()/(10 ** wbtc.decimals()))
+    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
+
 
 @pytest.fixture(scope="function", autouse=True)
 def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
@@ -134,10 +136,11 @@ def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
     # more to compensate interests cost until withdrawal
     weth.transfer(yvETH, Wei("500 ether"), {"from": weth_whale})
     # after test, withdraw
-    if(vault.balanceOf(wbtc_whale) > 0):
+    if vault.balanceOf(wbtc_whale) > 0:
         print("Withdrawing 100% from vault")
-        vault.withdraw({'from': wbtc_whale})
+        vault.withdraw({"from": wbtc_whale})
         assert vault.totalAssets() == 0
+
 
 @pytest.fixture(scope="class")
 def strategy(strategist, keeper, vault, Strategy, gov, yvETH):

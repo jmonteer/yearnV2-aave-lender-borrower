@@ -44,7 +44,6 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
 
 
-
 def print_debug(yvETH, strategy, lp):
     yvETH_balance = yvETH.balanceOf(strategy)
     yvETH_pps = yvETH.pricePerShare()

@@ -40,7 +40,6 @@ def test_rate_above_optimal(
 
     strategy.harvest({"from": gov})
     assert vdweth.balanceOf(strategy) > 0
-    
 
 
 def increase_interest():

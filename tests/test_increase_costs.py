@@ -6,8 +6,8 @@ def test_increase_costs(
 ):
     deposit_amount = 10 * 1e8
     assert vault.totalAssets() == 0
-    wbtc.approve(vault, 2 ** 256 - 1, {'from': wbtc_whale})
-    vault.deposit(deposit_amount, {'from': wbtc_whale})
+    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
+    vault.deposit(deposit_amount, {"from": wbtc_whale})
     # whale has deposited 10btc in fixture
     lp = get_lending_pool()
 
@@ -45,20 +45,21 @@ def test_increase_costs(
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
         strategy.warningLTVMultiplier(),
-        0, # set accceptable costs to 0
+        0,  # set accceptable costs to 0
         0,
         strategy.maxTotalBorrowIT(),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
         {"from": strategy.strategist()},
     )
-    
-    # to compensate interest rate on borrowing 
+
+    # to compensate interest rate on borrowing
     weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
     previousDebt = vdweth.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdweth.balanceOf(strategy)
     assert vdweth.balanceOf(strategy) == 0
+
 
 def get_lending_pool():
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")

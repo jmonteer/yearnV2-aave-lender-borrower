@@ -2,12 +2,11 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    lp = get_lending_pool()
-    ic = get_incentives_controller(strategy)
-    aToken = Contract(strategy.aToken())
-    vdToken = Contract(strategy.variableDebtToken())
-    stkAave = Contract(strategy.stkAave())
+def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
+    ic = get_incentives_controller(awbtc)
+    aToken = awbtc
+    vdToken = vdweth
+    stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})
@@ -45,23 +44,28 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
     chain.mine(1)
     assert strategy.harvestTrigger(0) == True
 
-    previousStkAave = stkAave.balanceOf(strategy)
-    previousAssets = strategy.estimatedTotalAssets()
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
+    assert accumulatedRewards > 0
+
     tx = strategy.harvest({"from": gov})
 
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
-    assert strategy.estimatedTotalAssets() > previousAssets
     assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]
+    assert tx.events["RewardsClaimed"][0]["amount"] > 0
     assert tx.events["Harvested"]["profit"] > 0
 
     # let harvest trigger during cooldown period
     chain.sleep(5 * 24 * 3600)  # 5 days
     chain.mine(1)
+    # not working because rewards are off at the moment (expected to come back)
+    # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
+    # assert stkAave.getTotalRewardsBalance(strategy) > 0
 
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
+    # rewards off (expected to come back)
+    # assert len(tx.events["RewardsClaimed"]) == 2
 
 
 def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
@@ -72,20 +76,42 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
     strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
 
     with reverts():
-        strategy.setIsWantIncentivised(True)
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            True,
+            True,
+            {"from": strategy.strategist()},
+        )
 
     with reverts():
-        strategy.setIsInvestmentTokenIncentivised(True)
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            True,
+            False,
+            {"from": strategy.strategist()},
+        )
+
+    with reverts():
+        strategy.setStrategyParams(
+            strategy.targetLTVMultiplier(),
+            strategy.warningLTVMultiplier(),
+            strategy.acceptableCostsRay(),
+            0,
+            strategy.maxTotalBorrowIT(),
+            False,
+            True,
+            {"from": strategy.strategist()},
+        )
 
 
-def get_incentives_controller(strat):
-    atoken = Contract(strat.aToken())
-    ic = Contract(atoken.getIncentivesController())
+def get_incentives_controller(awbtc):
+    ic = Contract(awbtc.getIncentivesController())
     return ic
-
-
-def get_lending_pool():
-    pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
-    a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
-    lp = Contract(a_provider.getLendingPool())
-    return lp

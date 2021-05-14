@@ -40,10 +40,8 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     with reverts():
         vault.withdraw()
 
-    vault.withdraw(
-        vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
-    )
-    assert wbtc.balanceOf(wbtc_whale) > prev_balance
+    # so we send profits
+    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
 
 
 def print_debug(yvETH, strategy, lp):

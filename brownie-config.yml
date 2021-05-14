@@ -15,6 +15,9 @@ dependencies:
 compiler:
   solc:
     version: 0.6.12
+    optimizer:
+      enabled: True
+      runs: 200
     remappings:
       - "@yearnvaults=iearn-finance/yearn-vaults@0.3.5"
       - "@openzeppelin=OpenZeppelin/openzeppelin-contracts@3.1.0"

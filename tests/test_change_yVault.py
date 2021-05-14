@@ -17,7 +17,11 @@ def test_change_yVault(
 
     # to offset interest rates and be able to repay full debt
     weth.transfer(yvETH, Wei("2 ether"), {"from": weth_whale})
-    strategy.setYVault(vault_snx, 0)
+
+    with reverts():
+        strategy.setYVault(vault_snx, 0)
+
+    strategy.setYVault(vault_snx, 0, {"from": gov})
 
     assert vault_snx.balanceOf(strategy) == 0
     assert yvETH.balanceOf(strategy) == 0
@@ -32,7 +36,7 @@ def test_change_yVault(
         Wei("10 ether"),
         {"from": "0xA1d7b2d891e3A1f9ef4bBC5be20630C2FEB1c470"},
     )
-    strategy.setYVault(yvETH, 10_000)
+    strategy.setYVault(yvETH, 10_000, {"from": gov})
 
     strategy.harvest({"from": gov})
 

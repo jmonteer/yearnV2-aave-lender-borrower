@@ -162,7 +162,7 @@ contract Strategy is BaseStrategy {
 
     function setYVault(IVault _yVault, uint256 maxLoss)
         external
-        onlyAuthorized
+        onlyGovernance
     {
         if (balanceOfDebt() != 0) {
             yVault.withdraw(

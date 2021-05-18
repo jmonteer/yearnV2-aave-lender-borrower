@@ -35,6 +35,8 @@ def test_rate_above_optimal(
         strategy.maxTotalBorrowIT(),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
 

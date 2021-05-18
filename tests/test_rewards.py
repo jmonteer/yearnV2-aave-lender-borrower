@@ -84,6 +84,8 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
             strategy.maxTotalBorrowIT(),
             True,
             True,
+            strategy.leaveDebtBehind(),
+            strategy.maxLoss(),
             {"from": strategy.strategist()},
         )
 
@@ -96,6 +98,8 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
             strategy.maxTotalBorrowIT(),
             True,
             False,
+            strategy.leaveDebtBehind(),
+            strategy.maxLoss(),
             {"from": strategy.strategist()},
         )
 
@@ -108,6 +112,8 @@ def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
             strategy.maxTotalBorrowIT(),
             False,
             True,
+            strategy.leaveDebtBehind(),
+            strategy.maxLoss(),
             {"from": strategy.strategist()},
         )
 

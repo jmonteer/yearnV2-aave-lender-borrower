@@ -14,6 +14,8 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         0,
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
@@ -27,6 +29,8 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         Wei("2 ether"),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})

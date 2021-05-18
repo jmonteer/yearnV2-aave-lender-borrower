@@ -15,6 +15,31 @@ def test_lev_ratios(
     warningLTV = strategy.warningLTVMultiplier()
 
     print_status(lp, strategy)
+    # should revert with ratios > 90%
+    with reverts():
+        strategy.setStrategyParams(
+        9_001,
+        9_001,
+        strategy.acceptableCostsRay(),
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        {"from": strategy.strategist()},
+    )
+    # should revert if targetRatio > warningRatio
+    with reverts():
+        strategy.setStrategyParams(
+        8_000,
+        7_000,
+        strategy.acceptableCostsRay(),
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        {"from": strategy.strategist()},
+    )
+    
     # we reduce the target to half and set ratios just below current ratios
     strategy.setStrategyParams(
         targetLTV / 2,

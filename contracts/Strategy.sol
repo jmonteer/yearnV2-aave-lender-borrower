@@ -54,6 +54,7 @@ contract Strategy is BaseStrategy {
 
     // support
     uint16 internal constant MAX_BPS = 10_000; // 100%
+    uint16 internal constant MAX_MULTIPLIER = 9_000; // 90%
 
     IAToken internal aToken;
     IVariableDebtToken internal variableDebtToken;
@@ -145,9 +146,8 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised
     ) external onlyAuthorized {
         require(
-            _targetLTVMultiplier < MAX_BPS &&
-                _warningLTVMultiplier < MAX_BPS &&
-                _warningLTVMultiplier > _targetLTVMultiplier
+            _warningLTVMultiplier <= MAX_MULTIPLIER &&
+                _targetLTVMultiplier <= _warningLTVMultiplier
         );
         targetLTVMultiplier = _targetLTVMultiplier;
         warningLTVMultiplier = _warningLTVMultiplier;

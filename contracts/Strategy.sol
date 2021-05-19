@@ -433,7 +433,7 @@ contract Strategy is BaseStrategy {
 
     function prepareMigration(address _newStrategy) internal override {
         // not implemented because debt cannot be migrated
-        revert("NOT IMPLEMENTED");
+        revert();
     }
 
     function harvestTrigger(uint256 callCost)
@@ -445,7 +445,9 @@ contract Strategy is BaseStrategy {
         // we harvest if:
         // 1. stakedAave is ready to be converted to Aave and sold
 
-        return _checkCooldown() || super.harvestTrigger(callCost);
+        return
+            _checkCooldown() ||
+            super.harvestTrigger(_fromETH(callCost, address(want)));
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {

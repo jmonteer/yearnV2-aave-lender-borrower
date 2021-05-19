@@ -64,16 +64,19 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 internal investmentToken;
 
-    ISwap internal router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    ISwap internal constant router =
+        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
-    IStakedAave internal stkAave =
+    IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
-    IProtocolDataProvider internal protocolDataProvider =
+    IProtocolDataProvider internal constant protocolDataProvider =
         IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
 
-    address internal WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+    address internal constant WETH =
+        address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    address internal constant AAVE =
+        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     uint256 internal minThreshold;
     uint256 public maxLoss = 1;
@@ -218,13 +221,13 @@ contract Strategy is BaseStrategy {
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised
     ) external virtual {
-        WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-        AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-        router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-        stkAave = IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-        protocolDataProvider = IProtocolDataProvider(
-            0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d
-        );
+        // WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        // AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+        // router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        // stkAave = IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+        // protocolDataProvider = IProtocolDataProvider(
+        //     0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d
+        // );
 
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());

@@ -146,6 +146,8 @@ def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
 def strategy(strategist, keeper, vault, Strategy, gov, yvETH):
     strategy = strategist.deploy(Strategy, vault, yvETH, True, True)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
+
+    strategy2 = strategy.clone()
     yield strategy
 
 

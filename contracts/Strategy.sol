@@ -43,6 +43,9 @@ contract Strategy is BaseStrategy {
     bool public isWantIncentivised;
     bool public isInvestmentTokenIncentivised;
 
+    // if set to true, the strategy will not try to repay debt by selling want
+    bool public leaveDebtBehind;
+
     // Aave's referral code
     uint16 internal referral;
 
@@ -54,6 +57,7 @@ contract Strategy is BaseStrategy {
 
     // support
     uint16 internal constant MAX_BPS = 10_000; // 100%
+    uint16 internal constant MAX_MULTIPLIER = 9_000; // 90%
 
     IAToken internal aToken;
     IVariableDebtToken internal variableDebtToken;
@@ -72,6 +76,7 @@ contract Strategy is BaseStrategy {
     address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     uint256 internal minThreshold;
+    uint256 public maxLoss = 1;
 
     constructor(
         address _vault,
@@ -142,12 +147,13 @@ contract Strategy is BaseStrategy {
         uint16 _aaveReferral,
         uint256 _maxTotalBorrowIT,
         bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised
+        bool _isInvestmentTokenIncentivised,
+        bool _leaveDebtBehind,
+        uint256 _maxLoss
     ) external onlyAuthorized {
         require(
-            _targetLTVMultiplier < MAX_BPS &&
-                _warningLTVMultiplier < MAX_BPS &&
-                _warningLTVMultiplier > _targetLTVMultiplier
+            _warningLTVMultiplier <= MAX_MULTIPLIER &&
+                _targetLTVMultiplier <= _warningLTVMultiplier
         );
         targetLTVMultiplier = _targetLTVMultiplier;
         warningLTVMultiplier = _warningLTVMultiplier;
@@ -158,9 +164,12 @@ contract Strategy is BaseStrategy {
         }
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
         _setIsWantIncentivised(_isWantIncentivised);
+        leaveDebtBehind = _leaveDebtBehind;
+        require(maxLoss <= 10_000);
+        maxLoss = _maxLoss;
     }
 
-    function setYVault(IVault _yVault, uint256 maxLoss)
+    function setYVault(IVault _yVault, uint256 _maxLoss)
         external
         onlyGovernance
     {
@@ -168,7 +177,7 @@ contract Strategy is BaseStrategy {
             yVault.withdraw(
                 yVault.balanceOf(address(this)),
                 address(this),
-                maxLoss
+                _maxLoss
             ); // we withdraw the full amount from investmentToken vault
             _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
 
@@ -384,7 +393,8 @@ contract Strategy is BaseStrategy {
         if (
             _amountNeeded > balance &&
             balanceOfDebt() > 0 && // still some debt remaining
-            balanceOfInvestmentToken().add(_valueOfInvestment()) == 0 // but no capital to repay
+            balanceOfInvestmentToken().add(_valueOfInvestment()) == 0 && // but no capital to repay
+            !leaveDebtBehind // if set to true, the strategy will not try to repay debt by selling want
         ) {
             // using this part of code will result in losses but it is necessary to unlock full collateral in case of wind down
             // we calculate how much want we need to fulfill the want request
@@ -412,10 +422,18 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    function delegatedAssets() external view override returns (uint256) {
+        // returns total debt borrowed in want (which is the delegatedAssets)
+        return
+            _fromETH(
+                _toETH(balanceOfDebt(), address(investmentToken)),
+                address(want)
+            );
+    }
+
     function prepareMigration(address _newStrategy) internal override {
-        // in yearn-vaults, the oldStrategy's totalDebt is set to 0 before calling migrate on BaseStrategy
-        // so we need to use totalDebt of the _newStrategy even if that logic "does not make sense"
-        liquidatePosition(vault.strategies(_newStrategy).totalDebt);
+        // not implemented because debt cannot be migrated
+        revert();
     }
 
     function harvestTrigger(uint256 callCost)
@@ -427,7 +445,9 @@ contract Strategy is BaseStrategy {
         // we harvest if:
         // 1. stakedAave is ready to be converted to Aave and sold
 
-        return _checkCooldown() || super.harvestTrigger(callCost);
+        return
+            _checkCooldown() ||
+            super.harvestTrigger(_fromETH(callCost, address(want)));
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {
@@ -466,7 +486,8 @@ contract Strategy is BaseStrategy {
             return true;
         }
 
-        return super.harvestTrigger(callCost);
+        // no call to super.tendTrigger as it would return false
+        return false;
     }
 
     // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
@@ -489,7 +510,7 @@ contract Strategy is BaseStrategy {
                 _investmentTokenToYShares(_amountIT),
                 yVault.balanceOf(address(this))
             );
-        yVault.withdraw(sharesToWithdraw);
+        yVault.withdraw(sharesToWithdraw, address(this), maxLoss);
         return balanceOfInvestmentToken().sub(balancePrior);
     }
 
@@ -747,7 +768,7 @@ contract Strategy is BaseStrategy {
         uint256 profit = _valueInVault.sub(_debt);
         uint256 ySharesToWithdraw = _investmentTokenToYShares(profit);
         if (ySharesToWithdraw > 0) {
-            yVault.withdraw(ySharesToWithdraw);
+            yVault.withdraw(ySharesToWithdraw, address(this), maxLoss);
             _sellInvestmentForWant(balanceOfInvestmentToken());
         }
     }
@@ -1027,16 +1048,11 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        if (_amount == 0) {
-            return 0;
-        }
-
-        if (_amount == type(uint256).max) {
-            return type(uint256).max;
-        }
-
-        // NOTE: 1:1
-        if (address(asset) == address(WETH)) {
+        if (
+            _amount == 0 ||
+            _amount == type(uint256).max ||
+            address(asset) == address(WETH) // 1:1 change
+        ) {
             return _amount;
         }
 
@@ -1051,16 +1067,11 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        if (_amount == 0) {
-            return 0;
-        }
-
-        if (_amount == type(uint256).max) {
-            return type(uint256).max;
-        }
-
-        // NOTE: 1:1
-        if (address(asset) == address(WETH)) {
+        if (
+            _amount == 0 ||
+            _amount == type(uint256).max ||
+            address(asset) == address(WETH) // 1:1 change
+        ) {
             return _amount;
         }
 

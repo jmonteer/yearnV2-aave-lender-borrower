@@ -28,6 +28,8 @@ def test_increase_costs(
         strategy.maxTotalBorrowIT(),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
@@ -50,6 +52,8 @@ def test_increase_costs(
         strategy.maxTotalBorrowIT(),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
 

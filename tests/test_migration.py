@@ -1,9 +1,9 @@
 import pytest
-from brownie import chain, Wei
+from brownie import chain, Wei, reverts
 
 
 def test_migration(
-    vault, strategy, Strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH
+    vault, strategy, Strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth
 ):
     prev_balance = wbtc.balanceOf(wbtc_whale)
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
@@ -17,11 +17,6 @@ def test_migration(
 
     # Deploy new Strategy and migrate
     strategy2 = gov.deploy(Strategy, vault, yvETH, True, True)
-    vault.migrateStrategy(strategy, strategy2, {"from": gov})
-
-    assert strategy2.estimatedTotalAssets() > 0
-
-    vault.withdraw(
-        vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
-    )
-    assert wbtc.balanceOf(wbtc_whale) > prev_balance
+    # strategy migration is not implemented as debt is not transferrable, does not make much sense
+    with reverts():
+        vault.migrateStrategy(strategy, strategy2, {"from": gov})

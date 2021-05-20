@@ -87,28 +87,19 @@ contract Strategy is BaseStrategy {
         address _vault,
         address _yVault,
         bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
     ) public BaseStrategy(_vault) {
-        minReportDelay = 24 * 3600;
-        maxReportDelay = 10 * 24 * 3600;
-        profitFactor = 100;
-        debtThreshold = 0;
-
-        yVault = IVault(_yVault);
-        investmentToken = IERC20(IVault(_yVault).token());
-        (address _aToken, , ) =
-            protocolDataProvider.getReserveTokensAddresses(address(want));
-        aToken = IAToken(_aToken);
-        (, , address _variableDebtToken) =
-            protocolDataProvider.getReserveTokensAddresses(
-                address(investmentToken)
-            );
-        variableDebtToken = IVariableDebtToken(_variableDebtToken);
-        minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-        _setIsWantIncentivised(_isWantIncentivised);
-        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
-
-        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
+        initialize(
+            _vault,
+            msg.sender,
+            msg.sender,
+            msg.sender,
+            _yVault,
+            _isWantIncentivised,
+            _isInvestmentTokenIncentivised,
+            _strategyName
+        );
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
@@ -175,7 +166,7 @@ contract Strategy is BaseStrategy {
         address _yVault,
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised,
-        string calldata _strategyName
+        string memory _strategyName
     ) external returns (address newStrategy) {
         // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
         bytes20 addressBytes = bytes20(address(this));
@@ -217,10 +208,15 @@ contract Strategy is BaseStrategy {
         address _yVault,
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised,
-        string calldata _strategyName
-    ) external {
+        string memory _strategyName
+    ) public {
         require(address(yVault) == address(0));
         _initialize(_vault, _strategist, _rewards, _keeper);
+        minReportDelay = 24 * 3600;
+        maxReportDelay = 10 * 24 * 3600;
+        profitFactor = 100;
+        debtThreshold = 0;
+
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
 

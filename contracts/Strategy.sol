@@ -59,8 +59,8 @@ contract Strategy is BaseStrategy {
     uint16 internal constant MAX_BPS = 10_000; // 100%
     uint16 internal constant MAX_MULTIPLIER = 9_000; // 90%
 
-    IAToken internal aToken;
-    IVariableDebtToken internal variableDebtToken;
+    IAToken public aToken;
+    IVariableDebtToken public variableDebtToken;
     IVault public yVault;
     IERC20 internal investmentToken;
 
@@ -79,7 +79,9 @@ contract Strategy is BaseStrategy {
         address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     uint256 internal minThreshold;
-    uint256 public maxLoss = 1;
+    uint256 public maxLoss;
+
+    string internal strategyName;
 
     constructor(
         address _vault,
@@ -106,20 +108,13 @@ contract Strategy is BaseStrategy {
         _setIsWantIncentivised(_isWantIncentivised);
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
-        referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
         maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
 
     function name() external view override returns (string memory) {
-        string memory _want = IOptionalERC20(address(want)).symbol();
-        string memory _lend = string(abi.encodePacked("Lend:", _want));
-        string memory _investmentToken =
-            IOptionalERC20(address(investmentToken)).symbol();
-        string memory _borrow =
-            string(abi.encodePacked("Borrow:", _investmentToken));
-        return string(abi.encodePacked("StrategyAave ", _lend, " ", _borrow));
+        return strategyName;
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -179,7 +174,8 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _yVault,
         bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised
+        bool _isInvestmentTokenIncentivised,
+        string calldata _strategyName
     ) external returns (address newStrategy) {
         // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
         bytes20 addressBytes = bytes20(address(this));
@@ -206,7 +202,8 @@ contract Strategy is BaseStrategy {
             _keeper,
             _yVault,
             _isWantIncentivised,
-            _isInvestmentTokenIncentivised
+            _isInvestmentTokenIncentivised,
+            _strategyName
         );
 
         emit Cloned(newStrategy);
@@ -219,35 +216,33 @@ contract Strategy is BaseStrategy {
         address _keeper,
         address _yVault,
         bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised
-    ) external virtual {
-        // WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-        // AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
-        // router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-        // stkAave = IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-        // protocolDataProvider = IProtocolDataProvider(
-        //     0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d
-        // );
-
+        bool _isInvestmentTokenIncentivised,
+        string calldata _strategyName
+    ) external {
+        require(address(yVault) == address(0));
+        _initialize(_vault, _strategist, _rewards, _keeper);
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
+
         (address _aToken, , ) =
             protocolDataProvider.getReserveTokensAddresses(address(want));
         aToken = IAToken(_aToken);
+
         (, , address _variableDebtToken) =
             protocolDataProvider.getReserveTokensAddresses(
                 address(investmentToken)
             );
+
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
 
         _setIsWantIncentivised(_isWantIncentivised);
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
-        referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
         maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
 
-        _initialize(_vault, _strategist, _rewards, _keeper);
+        maxLoss = 1;
+        strategyName = _strategyName;
     }
 
     // function setYVault(IVault _yVault, uint256 _maxLoss)
@@ -563,13 +558,6 @@ contract Strategy is BaseStrategy {
         // no call to super.tendTrigger as it would return false
         return false;
     }
-
-    // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
-
-    // function startCooldown() external onlyAuthorized {
-    //     // for emergency cases
-    //     IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
-    // }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
 

@@ -90,11 +90,7 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        initialize(
-            _vault,
-            msg.sender,
-            msg.sender,
-            msg.sender,
+        _initializeThis(
             _yVault,
             _isWantIncentivised,
             _isInvestmentTokenIncentivised,
@@ -200,18 +196,13 @@ contract Strategy is BaseStrategy {
         emit Cloned(newStrategy);
     }
 
-    function initialize(
-        address _vault,
-        address _strategist,
-        address _rewards,
-        address _keeper,
+    function _initializeThis(
         address _yVault,
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
-    ) public {
+    ) internal {
         require(address(yVault) == address(0));
-        _initialize(_vault, _strategist, _rewards, _keeper);
         minReportDelay = 24 * 3600;
         maxReportDelay = 10 * 24 * 3600;
         profitFactor = 100;
@@ -239,6 +230,26 @@ contract Strategy is BaseStrategy {
 
         maxLoss = 1;
         strategyName = _strategyName;
+    }
+
+    function initialize(
+        address _vault,
+        address _strategist,
+        address _rewards,
+        address _keeper,
+        address _yVault,
+        bool _isWantIncentivised,
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
+    ) public {
+        _initialize(_vault, _strategist, _rewards, _keeper);
+        require(address(yVault) == address(0));
+        _initializeThis(
+            _yVault,
+            _isWantIncentivised,
+            _isInvestmentTokenIncentivised,
+            _strategyName
+        );
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------

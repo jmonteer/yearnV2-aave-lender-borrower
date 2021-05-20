@@ -2,7 +2,20 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_clone(vault, strategy, strategist, rewards, keeper, gov, wbtc, awbtc, wbtc_whale, weth, weth_whale, yvETH):
+def test_clone(
+    vault,
+    strategy,
+    strategist,
+    rewards,
+    keeper,
+    gov,
+    wbtc,
+    awbtc,
+    wbtc_whale,
+    weth,
+    weth_whale,
+    yvETH,
+):
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
     lp = Contract(a_provider.getLendingPool())
@@ -17,9 +30,11 @@ def test_clone(vault, strategy, strategist, rewards, keeper, gov, wbtc, awbtc, w
         vault_snx,
         True,
         False,
-        "StrategyAaveLenderWBTCBorrowerSNX"
+        "StrategyAaveLenderWBTCBorrowerSNX",
     )
-    cloned_strategy = Contract.from_abi("Strategy", clone_tx.events['Cloned']['clone'], strategy.abi)
+    cloned_strategy = Contract.from_abi(
+        "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
+    )
 
     cloned_strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -28,13 +43,13 @@ def test_clone(vault, strategy, strategist, rewards, keeper, gov, wbtc, awbtc, w
         0,
         strategy.maxTotalBorrowIT(),
         strategy.isWantIncentivised(),
-        False, # snx is not incentivised
+        False,  # snx is not incentivised
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
 
-    vault.updateStrategyDebtRatio(strategy, 0, {'from': gov})
+    vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
@@ -71,7 +86,7 @@ def test_clone(vault, strategy, strategist, rewards, keeper, gov, wbtc, awbtc, w
 
     # so we send profits
     snx.transfer(vault_snx, Wei("1000 ether"), {"from": snx_whale})
-    vault.withdraw({'from': wbtc_whale})
+    vault.withdraw({"from": wbtc_whale})
 
 
 def print_debug(yvSNX, strategy, lp):

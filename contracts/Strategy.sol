@@ -59,8 +59,8 @@ contract Strategy is BaseStrategy {
     uint16 internal constant MAX_BPS = 10_000; // 100%
     uint16 internal constant MAX_MULTIPLIER = 9_000; // 90%
 
-    IAToken public aToken;
-    IVariableDebtToken public variableDebtToken;
+    IAToken internal aToken;
+    IVariableDebtToken internal variableDebtToken;
     IVault public yVault;
     IERC20 internal investmentToken;
 
@@ -244,48 +244,6 @@ contract Strategy is BaseStrategy {
         maxLoss = 1;
         strategyName = _strategyName;
     }
-
-    // function setYVault(IVault _yVault, uint256 _maxLoss)
-    //     external
-    //     onlyGovernance
-    // {
-    //     if (balanceOfDebt() != 0) {
-    //         yVault.withdraw(
-    //             yVault.balanceOf(address(this)),
-    //             address(this),
-    //             _maxLoss
-    //         ); // we withdraw the full amount from investmentToken vault
-    //         _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
-
-    //         // we sell profits
-    //         if (balanceOfInvestmentToken() > 0) {
-    //             _sellInvestmentForWant(balanceOfInvestmentToken());
-    //         }
-    //     }
-    //     // we are going to stop using these tokens so we need to be sure we have all 0 balance
-    //     require(
-    //         balanceOfInvestmentToken() == 0 &&
-    //             balanceOfDebt() == 0 &&
-    //             yVault.balanceOf(address(this)) == 0
-    //     );
-
-    //     // set new investment Token
-    //     investmentToken = IERC20(IVault(_yVault).token());
-
-    //     // retrieve variableDebtToken
-    //     (, , address _variableDebtToken) =
-    //         protocolDataProvider.getReserveTokensAddresses(
-    //             address(investmentToken)
-    //         );
-
-    //     // set variableDebtToken
-    //     variableDebtToken = IVariableDebtToken(_variableDebtToken);
-
-    //     // change Investment Vault
-    //     yVault = _yVault;
-
-    //     minThreshold = (10**(_yVault.decimals())).div(100); // minThreshold is 0.01 InvestmentToken
-    // }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
     function prepareReturn(uint256 _debtOutstanding)

@@ -68,6 +68,7 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     # rewards off (expected to come back)
     # assert len(tx.events["RewardsClaimed"]) == 2
 
+
 def get_incentives_controller(awbtc):
     ic = Contract(awbtc.getIncentivesController())
     return ic

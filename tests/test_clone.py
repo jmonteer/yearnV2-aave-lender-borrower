@@ -50,7 +50,9 @@ def test_clone(
     )
 
     with reverts():
-        strategy.initialize(vault, strategist, rewards, keeper, vault_snx, True, False, "NameRevert")
+        strategy.initialize(
+            vault, strategist, rewards, keeper, vault_snx, True, False, "NameRevert"
+        )
 
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})

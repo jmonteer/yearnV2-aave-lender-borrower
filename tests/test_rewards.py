@@ -68,58 +68,6 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     # rewards off (expected to come back)
     # assert len(tx.events["RewardsClaimed"]) == 2
 
-
-# not working due to bytecode size limit
-# def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
-#     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
-#     vault_susd = Contract("0xa5cA62D95D24A4a350983D5B8ac4EB8638887396")
-
-#     # it should deploy
-#     strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False, "StrategyLenderSNXBorrowerSUSD")
-
-#     with reverts():
-#         strategy.setStrategyParams(
-#             strategy.targetLTVMultiplier(),
-#             strategy.warningLTVMultiplier(),
-#             strategy.acceptableCostsRay(),
-#             0,
-#             strategy.maxTotalBorrowIT(),
-#             True,
-#             True,
-#             strategy.leaveDebtBehind(),
-#             strategy.maxLoss(),
-#             {"from": strategy.strategist()},
-#         )
-
-#     with reverts():
-#         strategy.setStrategyParams(
-#             strategy.targetLTVMultiplier(),
-#             strategy.warningLTVMultiplier(),
-#             strategy.acceptableCostsRay(),
-#             0,
-#             strategy.maxTotalBorrowIT(),
-#             True,
-#             False,
-#             strategy.leaveDebtBehind(),
-#             strategy.maxLoss(),
-#             {"from": strategy.strategist()},
-#         )
-
-#     with reverts():
-#         strategy.setStrategyParams(
-#             strategy.targetLTVMultiplier(),
-#             strategy.warningLTVMultiplier(),
-#             strategy.acceptableCostsRay(),
-#             0,
-#             strategy.maxTotalBorrowIT(),
-#             False,
-#             True,
-#             strategy.leaveDebtBehind(),
-#             strategy.maxLoss(),
-#             {"from": strategy.strategist()},
-#         )
-
-
 def get_incentives_controller(awbtc):
     ic = Contract(awbtc.getIncentivesController())
     return ic

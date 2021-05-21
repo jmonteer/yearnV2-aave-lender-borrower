@@ -33,6 +33,7 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
+    bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
     uint256 public acceptableCostsRay = 1e27;
@@ -64,59 +65,44 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 internal investmentToken;
 
-    ISwap internal router = ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    ISwap internal constant router =
+        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
-    IStakedAave internal stkAave =
+    IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
-    IProtocolDataProvider internal protocolDataProvider =
+    IProtocolDataProvider internal constant protocolDataProvider =
         IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
 
-    address internal WETH = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address internal AAVE = address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+    address internal constant WETH =
+        address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+    address internal constant AAVE =
+        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
 
     uint256 internal minThreshold;
-    uint256 public maxLoss = 1;
+    uint256 public maxLoss;
+
+    string internal strategyName;
 
     constructor(
         address _vault,
         address _yVault,
         bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
     ) public BaseStrategy(_vault) {
-        minReportDelay = 24 * 3600;
-        maxReportDelay = 10 * 24 * 3600;
-        profitFactor = 100;
-        debtThreshold = 0;
-
-        yVault = IVault(_yVault);
-        investmentToken = IERC20(IVault(_yVault).token());
-        (address _aToken, , ) =
-            protocolDataProvider.getReserveTokensAddresses(address(want));
-        aToken = IAToken(_aToken);
-        (, , address _variableDebtToken) =
-            protocolDataProvider.getReserveTokensAddresses(
-                address(investmentToken)
-            );
-        variableDebtToken = IVariableDebtToken(_variableDebtToken);
-        minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-        _setIsWantIncentivised(_isWantIncentivised);
-        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
-
-        referral = 179; // currently not working but in case it is done retroactively (jmonteer's referral code)
-        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
+        _initializeThis(
+            _yVault,
+            _isWantIncentivised,
+            _isInvestmentTokenIncentivised,
+            _strategyName
+        );
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
 
     function name() external view override returns (string memory) {
-        string memory _want = IOptionalERC20(address(want)).symbol();
-        string memory _lend = string(abi.encodePacked("Lend:", _want));
-        string memory _investmentToken =
-            IOptionalERC20(address(investmentToken)).symbol();
-        string memory _borrow =
-            string(abi.encodePacked("Borrow:", _investmentToken));
-        return string(abi.encodePacked("StrategyAave ", _lend, " ", _borrow));
+        return strategyName;
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
@@ -159,9 +145,7 @@ contract Strategy is BaseStrategy {
         warningLTVMultiplier = _warningLTVMultiplier;
         acceptableCostsRay = _acceptableCostsRay;
         maxTotalBorrowIT = _maxTotalBorrowIT;
-        if (_aaveReferral != 0) {
-            referral = _aaveReferral;
-        }
+        referral = _aaveReferral;
         _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
         _setIsWantIncentivised(_isWantIncentivised);
         leaveDebtBehind = _leaveDebtBehind;
@@ -169,46 +153,103 @@ contract Strategy is BaseStrategy {
         maxLoss = _maxLoss;
     }
 
-    function setYVault(IVault _yVault, uint256 _maxLoss)
-        external
-        onlyGovernance
-    {
-        if (balanceOfDebt() != 0) {
-            yVault.withdraw(
-                yVault.balanceOf(address(this)),
-                address(this),
-                _maxLoss
-            ); // we withdraw the full amount from investmentToken vault
-            _repayInvestmentTokenDebt(balanceOfInvestmentToken()); // we use all of our balance to repay debt with Aave
+    event Cloned(address indexed clone);
 
-            // we sell profits
-            if (balanceOfInvestmentToken() > 0) {
-                _sellInvestmentForWant(balanceOfInvestmentToken());
-            }
+    function cloneAaveLenderBorrower(
+        address _vault,
+        address _strategist,
+        address _rewards,
+        address _keeper,
+        address _yVault,
+        bool _isWantIncentivised,
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
+    ) external returns (address newStrategy) {
+        require(isOriginal);
+        // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
+        bytes20 addressBytes = bytes20(address(this));
+        assembly {
+            // EIP-1167 bytecode
+            let clone_code := mload(0x40)
+            mstore(
+                clone_code,
+                0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000
+            )
+            mstore(add(clone_code, 0x14), addressBytes)
+            mstore(
+                add(clone_code, 0x28),
+                0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000
+            )
+            newStrategy := create(0, clone_code, 0x37)
         }
-        // we are going to stop using these tokens so we need to be sure we have all 0 balance
-        require(
-            balanceOfInvestmentToken() == 0 &&
-                balanceOfDebt() == 0 &&
-                yVault.balanceOf(address(this)) == 0
+
+        Strategy(newStrategy).initialize(
+            _vault,
+            _strategist,
+            _rewards,
+            _keeper,
+            _yVault,
+            _isWantIncentivised,
+            _isInvestmentTokenIncentivised,
+            _strategyName
         );
 
-        // set new investment Token
+        emit Cloned(newStrategy);
+    }
+
+    function _initializeThis(
+        address _yVault,
+        bool _isWantIncentivised,
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
+    ) internal {
+        minReportDelay = 24 * 3600;
+        maxReportDelay = 10 * 24 * 3600;
+        profitFactor = 100;
+        debtThreshold = 0;
+
+        yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
 
-        // retrieve variableDebtToken
+        (address _aToken, , ) =
+            protocolDataProvider.getReserveTokensAddresses(address(want));
+        aToken = IAToken(_aToken);
+
         (, , address _variableDebtToken) =
             protocolDataProvider.getReserveTokensAddresses(
                 address(investmentToken)
             );
 
-        // set variableDebtToken
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
+        minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
 
-        // change Investment Vault
-        yVault = _yVault;
+        _setIsWantIncentivised(_isWantIncentivised);
+        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
 
-        minThreshold = (10**(_yVault.decimals())).div(100); // minThreshold is 0.01 InvestmentToken
+        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
+
+        maxLoss = 1;
+        strategyName = _strategyName;
+    }
+
+    function initialize(
+        address _vault,
+        address _strategist,
+        address _rewards,
+        address _keeper,
+        address _yVault,
+        bool _isWantIncentivised,
+        bool _isInvestmentTokenIncentivised,
+        string memory _strategyName
+    ) public {
+        _initialize(_vault, _strategist, _rewards, _keeper);
+        require(address(yVault) == address(0));
+        _initializeThis(
+            _yVault,
+            _isWantIncentivised,
+            _isInvestmentTokenIncentivised,
+            _strategyName
+        );
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -264,8 +305,8 @@ contract Strategy is BaseStrategy {
             uint256 totalDebtETH,
             uint256 availableBorrowsETH,
             uint256 currentLiquidationThreshold,
-            uint256 ltv,
-            uint256 healthFactor
+            ,
+
         ) = _getAaveUserAccountData();
 
         // if there is no want deposited into aave, don't do nothing
@@ -458,10 +499,10 @@ contract Strategy is BaseStrategy {
         (
             uint256 totalCollateralETH,
             uint256 totalDebtETH,
-            uint256 availableBorrowsETH,
+            ,
             uint256 currentLiquidationThreshold,
-            uint256 ltv,
-            uint256 healthFactor
+            ,
+
         ) = _getAaveUserAccountData();
 
         uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
@@ -471,30 +512,16 @@ contract Strategy is BaseStrategy {
             _calculateMaxDebt();
 
         if (
-            currentLTV < targetLTV &&
-            currentProtocolDebt < maxProtocolDebt &&
-            targetLTV.sub(currentLTV) > 100
+            (currentLTV < targetLTV &&
+                currentProtocolDebt < maxProtocolDebt &&
+                targetLTV.sub(currentLTV) > 100) || // WE NEED TO TAKE ON MORE DEBT
+            (currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt) // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
         ) {
-            // WE NEED TO TAKE ON MORE DEBT
-            // threshold of 100 bps of difference
-            return true;
-        } else if (
-            currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
-        ) {
-            // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
-            // no threshold, take immediate action
             return true;
         }
 
         // no call to super.tendTrigger as it would return false
         return false;
-    }
-
-    // ----------------- EXTERNAL FUNCTIONS MANAGEMENT -----------------
-
-    function startCooldown() external onlyAuthorized {
-        // for emergency cases
-        IStakedAave(stkAave).cooldown(); // it will revert if balance of stkAave == 0
     }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
@@ -543,16 +570,15 @@ contract Strategy is BaseStrategy {
     }
 
     function _depositInYVault() internal {
-        if (balanceOfInvestmentToken() == 0) {
-            return;
+        uint256 balanceIT = balanceOfInvestmentToken();
+        if (balanceIT > 0) {
+            _checkAllowance(
+                address(yVault),
+                address(investmentToken),
+                balanceIT
+            );
+            yVault.deposit();
         }
-
-        _checkAllowance(
-            address(yVault),
-            address(investmentToken),
-            balanceOfInvestmentToken()
-        );
-        yVault.deposit();
     }
 
     function _claimRewards() internal {
@@ -565,10 +591,7 @@ contract Strategy is BaseStrategy {
             }
 
             // claim AAVE rewards
-            uint256 pendingAAVE = stkAave.getTotalRewardsBalance(address(this));
-            if (pendingAAVE > 0) {
-                stkAave.claimRewards(address(this), pendingAAVE);
-            }
+            stkAave.claimRewards(address(this), type(uint256).max);
 
             // sell AAVE for want
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
@@ -589,19 +612,11 @@ contract Strategy is BaseStrategy {
                 assets[0] = address(aToken);
             }
 
-            uint256 pendingRewards =
-                _incentivesController().getRewardsBalance(
-                    assets,
-                    address(this)
-                );
-
-            if (pendingRewards > 0) {
-                _incentivesController().claimRewards(
-                    assets,
-                    pendingRewards,
-                    address(this)
-                );
-            }
+            _incentivesController().claimRewards(
+                assets,
+                type(uint256).max,
+                address(this)
+            );
 
             // request start of cooldown period
             if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
@@ -934,23 +949,12 @@ contract Strategy is BaseStrategy {
     }
 
     function _setIsWantIncentivised(bool _isWantIncentivised) internal {
-        require(
-            !_isWantIncentivised || // to avoid calling getIncentivesController if not incentivised
-                address(aToken.getIncentivesController()) != address(0)
-        );
-
         isWantIncentivised = _isWantIncentivised;
     }
 
     function _setIsInvestmentTokenIncentivised(
         bool _isInvestmentTokenIncentivised
     ) internal {
-        require(
-            !_isInvestmentTokenIncentivised || // to avoid calling getIncentivesController if not incentivised
-                address(variableDebtToken.getIncentivesController()) !=
-                address(0)
-        );
-
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
     }
 

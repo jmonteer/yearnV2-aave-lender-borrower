@@ -50,7 +50,11 @@ def amount(accounts, token, user):
 
 @pytest.fixture(scope="session")
 def yvETH():
-    yield Contract("0xa9fE4601811213c340e850ea305481afF02f5b28")
+    vault = Contract("0xa9fE4601811213c340e850ea305481afF02f5b28")
+    vault.setDepositLimit(
+        2 ** 256 - 1, {"from": vault.governance()}
+    )  # testing during war room
+    yield vault
 
 
 @pytest.fixture(scope="session")
@@ -144,8 +148,11 @@ def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
 
 @pytest.fixture(scope="class")
 def strategy(strategist, keeper, vault, Strategy, gov, yvETH):
-    strategy = strategist.deploy(Strategy, vault, yvETH, True, True)
+    strategy = strategist.deploy(
+        Strategy, vault, yvETH, True, True, "StrategyLenderWBTCBorrowerWETH"
+    )
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
+
     yield strategy
 
 

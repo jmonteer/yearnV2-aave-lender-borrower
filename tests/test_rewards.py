@@ -52,7 +52,8 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
     assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]
-    assert tx.events["RewardsClaimed"][0]["amount"] > 0
+    assert tx.events["RewardsClaimed"][0]["amount"] == 0
+    assert tx.events["RewardsClaimed"][1]["amount"] > 0
     assert tx.events["Harvested"]["profit"] > 0
 
     # let harvest trigger during cooldown period
@@ -66,56 +67,6 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     assert tx.events["Harvested"]
     # rewards off (expected to come back)
     # assert len(tx.events["RewardsClaimed"]) == 2
-
-
-def test_rewards_on(strategist, keeper, vault, Strategy, gov, yvETH):
-    vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
-    vault_susd = Contract("0xa5cA62D95D24A4a350983D5B8ac4EB8638887396")
-
-    # it should deploy
-    strategy = strategist.deploy(Strategy, vault_snx, vault_susd, False, False)
-
-    with reverts():
-        strategy.setStrategyParams(
-            strategy.targetLTVMultiplier(),
-            strategy.warningLTVMultiplier(),
-            strategy.acceptableCostsRay(),
-            0,
-            strategy.maxTotalBorrowIT(),
-            True,
-            True,
-            strategy.leaveDebtBehind(),
-            strategy.maxLoss(),
-            {"from": strategy.strategist()},
-        )
-
-    with reverts():
-        strategy.setStrategyParams(
-            strategy.targetLTVMultiplier(),
-            strategy.warningLTVMultiplier(),
-            strategy.acceptableCostsRay(),
-            0,
-            strategy.maxTotalBorrowIT(),
-            True,
-            False,
-            strategy.leaveDebtBehind(),
-            strategy.maxLoss(),
-            {"from": strategy.strategist()},
-        )
-
-    with reverts():
-        strategy.setStrategyParams(
-            strategy.targetLTVMultiplier(),
-            strategy.warningLTVMultiplier(),
-            strategy.acceptableCostsRay(),
-            0,
-            strategy.maxTotalBorrowIT(),
-            False,
-            True,
-            strategy.leaveDebtBehind(),
-            strategy.maxLoss(),
-            {"from": strategy.strategist()},
-        )
 
 
 def get_incentives_controller(awbtc):

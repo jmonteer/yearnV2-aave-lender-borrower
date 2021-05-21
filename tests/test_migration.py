@@ -16,7 +16,7 @@ def test_migration(
     chain.mine(1)
 
     # Deploy new Strategy and migrate
-    strategy2 = gov.deploy(Strategy, vault, yvETH, True, True)
+    strategy2 = gov.deploy(Strategy, vault, yvETH, True, True, "name")
     # strategy migration is not implemented as debt is not transferrable, does not make much sense
     with reverts():
         vault.migrateStrategy(strategy, strategy2, {"from": gov})

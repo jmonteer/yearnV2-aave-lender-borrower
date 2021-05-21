@@ -89,6 +89,38 @@ def test_clone(
     vault.withdraw({"from": wbtc_whale})
 
 
+def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
+    vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
+
+    clone_tx = strategy.clone(
+        vault,
+        strategist,
+        rewards,
+        keeper,
+        vault_snx,
+        True,
+        False,
+        "StrategyAaveLenderWBTCBorrowerSNX",
+    )
+    cloned_strategy = Contract.from_abi(
+        "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
+    )
+
+    # should not clone a clone
+    with reverts():
+        cloned_strategy.clone(
+            vault,
+            strategist,
+            rewards,
+            keeper,
+            vault_snx,
+            True,
+            False,
+            "StrategyAaveLenderWBTCBorrowerSNX",
+            {"from": strategist},
+        )
+
+
 def print_debug(yvSNX, strategy, lp):
     yvSNX_balance = yvSNX.balanceOf(strategy)
     yvSNX_pps = yvSNX.pricePerShare()

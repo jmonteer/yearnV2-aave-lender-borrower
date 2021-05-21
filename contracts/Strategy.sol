@@ -33,6 +33,7 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
+    bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
     uint256 public acceptableCostsRay = 1e27;
@@ -154,7 +155,7 @@ contract Strategy is BaseStrategy {
 
     event Cloned(address indexed clone);
 
-    function clone(
+    function cloneAaveLenderBorrower(
         address _vault,
         address _strategist,
         address _rewards,
@@ -164,9 +165,9 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) external returns (address newStrategy) {
+        require(isOriginal);
         // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
         bytes20 addressBytes = bytes20(address(this));
-
         assembly {
             // EIP-1167 bytecode
             let clone_code := mload(0x40)
@@ -202,7 +203,6 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) internal {
-        require(address(yVault) == address(0));
         minReportDelay = 24 * 3600;
         maxReportDelay = 10 * 24 * 3600;
         profitFactor = 100;

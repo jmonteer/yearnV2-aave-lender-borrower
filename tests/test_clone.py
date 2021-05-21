@@ -22,7 +22,7 @@ def test_clone(
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
     snx = Contract(vault_snx.token())
     snx_whale = "0xA1d7b2d891e3A1f9ef4bBC5be20630C2FEB1c470"
-    clone_tx = strategy.clone(
+    clone_tx = strategy.cloneAaveLenderBorrower(
         vault,
         strategist,
         rewards,
@@ -48,6 +48,9 @@ def test_clone(
         strategy.maxLoss(),
         {"from": strategy.strategist()},
     )
+
+    with reverts():
+        strategy.initialize(vault, strategist, rewards, keeper, vault_snx, True, False, "NameRevert")
 
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
@@ -92,7 +95,7 @@ def test_clone(
 def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
 
-    clone_tx = strategy.clone(
+    clone_tx = strategy.cloneAaveLenderBorrower(
         vault,
         strategist,
         rewards,
@@ -108,7 +111,7 @@ def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
 
     # should not clone a clone
     with reverts():
-        cloned_strategy.clone(
+        cloned_strategy.cloneAaveLenderBorrower(
             vault,
             strategist,
             rewards,

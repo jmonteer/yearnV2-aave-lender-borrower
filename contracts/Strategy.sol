@@ -861,7 +861,7 @@ contract Strategy is BaseStrategy {
             // Special case where protocol is above utilization rate but we want
             // a lower interest rate than (base + slope1)
             if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (vars.totalDebt, 0);
+                return (_toETH(vars.totalDebt, address(investmentToken)), 0);
             }
 
             // we solve Aave's Interest Rates equation for utilisation rates above optimal U
@@ -879,7 +879,10 @@ contract Strategy is BaseStrategy {
             .rayMul(vars.targetUtilizationRate)
             .rayDiv(1e27);
 
-        return (vars.totalDebt, vars.maxProtocolDebt);
+        return (
+            _toETH(vars.totalDebt, address(investmentToken)),
+            _toETH(vars.maxProtocolDebt, address(investmentToken))
+        );
     }
 
     function balanceOfWant() internal view returns (uint256) {

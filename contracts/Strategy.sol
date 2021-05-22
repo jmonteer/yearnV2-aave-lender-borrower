@@ -36,13 +36,13 @@ contract Strategy is BaseStrategy {
     bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay;
+    uint256 public acceptableCostsRay = 1e27;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
-    // true if this token is incentivised
-    bool internal isWantIncentivised;
-    bool internal isInvestmentTokenIncentivised;
+
+    bool public isWantIncentivised;
+    bool public isInvestmentTokenIncentivised;
 
     // if set to true, the strategy will not try to repay debt by selling want
     bool public leaveDebtBehind;
@@ -53,12 +53,10 @@ contract Strategy is BaseStrategy {
     // NOTE: LTV = Loan-To-Value = debt/collateral
 
     // Target LTV: ratio up to which which we will borrow
-    // Common value: 6_000 => 60% of liquidation LTV
-    uint16 public targetLTVMultiplier;
+    uint16 public targetLTVMultiplier = 6_000;
 
     // Warning LTV: ratio at which we will repay
-    // Common value: 8_000 => 80% of liquidation LTV
-    uint16 public warningLTVMultiplier; // 80% of liquidation LTV
+    uint16 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
     // support
     uint16 internal constant MAX_BPS = 10_000; // 100%
@@ -852,7 +850,7 @@ contract Strategy is BaseStrategy {
             // Special case where protocol is above utilization rate but we want
             // a lower interest rate than (base + slope1)
             if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (vars.totalDebt, 0);
+                return (_toETH(vars.totalDebt, address(investmentToken)), 0);
             }
 
             // we solve Aave's Interest Rates equation for utilisation rates above optimal U

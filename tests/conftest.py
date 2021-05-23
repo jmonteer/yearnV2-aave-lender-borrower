@@ -2,11 +2,13 @@ import pytest
 from brownie import config, chain, Wei
 from brownie import Contract
 
+
 @pytest.fixture(autouse=True)
 def clean():
     chain.snapshot()
     yield
     chain.revert()
+
 
 @pytest.fixture(scope="session")
 def gov(accounts):

@@ -71,9 +71,11 @@ def vault(gov):
 @pytest.fixture(scope="class")
 def strategy(strategist, vault, Strategy, yvUSDC):
     strategy = strategist.deploy(
-        Strategy, vault, yvUSDC, False, True, "StrategyLenderLinkBorrowerUSDC"
+        Strategy, vault, yvUSDC, False, True, "StrategyLenderLINKBorrowerUSDC"
     )
+
     vault.revokeStrategy("0x3aD22Fd9e2cc898d6F77AC12eAc603A77a464c45")
+    vault.revokeStrategy("0xA875a88dc765BA2B598F858b1D95111D519fd43E")
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000)
     strategy.setStrategyParams(
         6_000,  # _targetLTVMultiplier

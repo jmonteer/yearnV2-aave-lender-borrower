@@ -64,7 +64,7 @@ contract Strategy is BaseStrategy {
 
     IAToken internal aToken;
     IVariableDebtToken internal variableDebtToken;
-    IVault internal yVault;
+    IVault public yVault;
     IERC20 internal investmentToken;
 
     ISwap internal constant router =
@@ -592,8 +592,11 @@ contract Strategy is BaseStrategy {
             stkAave.claimRewards(address(this), type(uint256).max);
 
             // sell AAVE for want
+            // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
-            _sellAAVEForWant(aaveBalance);
+            if (aaveBalance > 1e15) {
+                _sellAAVEForWant(aaveBalance);
+            }
 
             // claim rewards
             // only add to assets those assets that are incentivised

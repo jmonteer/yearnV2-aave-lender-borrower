@@ -36,12 +36,7 @@ def test_happy_path(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yv
     chain.mine(1)
     print_debug(yvETH, strategy, lp)
 
-    # why do we have losses? because of interests
-    with reverts():
-        vault.withdraw()
-
-    # so we send profits
-    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
+    vault.withdraw({"from": wbtc_whale})
 
 
 def print_debug(yvETH, strategy, lp):

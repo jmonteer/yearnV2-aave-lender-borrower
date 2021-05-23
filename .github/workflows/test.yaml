@@ -76,3 +76,4 @@ jobs:
         brownie test ./tests/test_revoke.py -s
         brownie test ./tests/test_rewards.py -s
         brownie test ./tests/test_shutdown.py -s
+        brownie test ./tests/linkUsdc/test_happy_path.py -s

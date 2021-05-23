@@ -3,6 +3,13 @@ from brownie import config, chain, Wei
 from brownie import Contract
 
 
+@pytest.fixture(autouse=True)
+def clean():
+    chain.snapshot()
+    yield
+    chain.revert()
+
+
 @pytest.fixture(scope="session")
 def gov(accounts):
     yield accounts.at("0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52", force=True)

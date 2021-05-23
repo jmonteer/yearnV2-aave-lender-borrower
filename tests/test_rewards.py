@@ -51,8 +51,11 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
 
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
-    assert tx.events["Swap"][0]["amount0In"] == tx.events["Redeem"][0]["amount"]
-    assert tx.events["RewardsClaimed"][0]["amount"] == 0
+    assert (
+        tx.events["Swap"][0]["amount0In"]
+        == tx.events["Redeem"][0]["amount"] + tx.events["RewardsClaimed"][0]["amount"]
+    )
+    assert tx.events["RewardsClaimed"][0]["amount"] > 0
     assert tx.events["RewardsClaimed"][1]["amount"] > 0
     assert tx.events["Harvested"]["profit"] > 0
 

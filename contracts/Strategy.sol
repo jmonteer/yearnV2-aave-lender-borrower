@@ -40,7 +40,7 @@ contract Strategy is BaseStrategy {
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
-    // true if this token is incentivised
+
     bool public isWantIncentivised;
     bool public isInvestmentTokenIncentivised;
 
@@ -51,8 +51,10 @@ contract Strategy is BaseStrategy {
     uint16 internal referral;
 
     // NOTE: LTV = Loan-To-Value = debt/collateral
+
     // Target LTV: ratio up to which which we will borrow
-    uint16 public targetLTVMultiplier = 6_000; // 60% of liquidation LTV
+    uint16 public targetLTVMultiplier = 6_000;
+
     // Warning LTV: ratio at which we will repay
     uint16 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
 
@@ -74,14 +76,11 @@ contract Strategy is BaseStrategy {
     IProtocolDataProvider internal constant protocolDataProvider =
         IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
 
-    address internal constant WETH =
-        address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-    address internal constant AAVE =
-        address(0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9);
+    address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+    address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
 
     uint256 internal minThreshold;
     uint256 public maxLoss;
-
     string internal strategyName;
 
     constructor(
@@ -146,8 +145,8 @@ contract Strategy is BaseStrategy {
         acceptableCostsRay = _acceptableCostsRay;
         maxTotalBorrowIT = _maxTotalBorrowIT;
         referral = _aaveReferral;
-        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
-        _setIsWantIncentivised(_isWantIncentivised);
+        isWantIncentivised = _isWantIncentivised;
+        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
         leaveDebtBehind = _leaveDebtBehind;
         require(maxLoss <= 10_000);
         maxLoss = _maxLoss;
@@ -206,7 +205,7 @@ contract Strategy is BaseStrategy {
         minReportDelay = 24 * 3600;
         maxReportDelay = 10 * 24 * 3600;
         profitFactor = 100;
-        debtThreshold = 0;
+        // debtThreshold = 0; It's 0 by default.
 
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
@@ -222,9 +221,8 @@ contract Strategy is BaseStrategy {
 
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-
-        _setIsWantIncentivised(_isWantIncentivised);
-        _setIsInvestmentTokenIncentivised(_isInvestmentTokenIncentivised);
+        isWantIncentivised = _isWantIncentivised;
+        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
 
         maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
 
@@ -411,7 +409,6 @@ contract Strategy is BaseStrategy {
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
         uint256 balance = balanceOfWant();
-        uint256 previousBalance = balance;
         // if we have enough want to take care of the liquidatePosition without actually liquidating positons
         if (balance >= _amountNeeded) {
             return (_amountNeeded, 0);
@@ -559,13 +556,12 @@ contract Strategy is BaseStrategy {
         );
 
         if (amount > 0) {
-            uint256 repaid =
-                _lendingPool().repay(
-                    address(investmentToken),
-                    amount,
-                    uint256(2),
-                    address(this)
-                );
+            _lendingPool().repay(
+                address(investmentToken),
+                amount,
+                uint256(2),
+                address(this)
+            );
         }
     }
 
@@ -594,8 +590,11 @@ contract Strategy is BaseStrategy {
             stkAave.claimRewards(address(this), type(uint256).max);
 
             // sell AAVE for want
+            // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
-            _sellAAVEForWant(aaveBalance);
+            if (aaveBalance > 1e15) {
+                _sellAAVEForWant(aaveBalance);
+            }
 
             // claim rewards
             // only add to assets those assets that are incentivised
@@ -801,15 +800,6 @@ contract Strategy is BaseStrategy {
 
         // Hack to avoid the stack too deep compiler error.
         SupportStructs.CalcMaxDebtLocalVars memory vars;
-        vars.availableLiquidity = 0;
-        vars.totalStableDebt = 0;
-        vars.totalVariableDebt = 0;
-        vars.totalDebt = 0;
-        vars.utilizationRate = 0;
-        vars.totalLiquidity = 0;
-        vars.targetUtilizationRate = 0;
-        vars.maxProtocolDebt = 0;
-
         DataTypes.ReserveData memory reserveData =
             _lendingPool().getReserveData(address(investmentToken));
         IReserveInterestRateStrategy irs =
@@ -861,7 +851,7 @@ contract Strategy is BaseStrategy {
             // Special case where protocol is above utilization rate but we want
             // a lower interest rate than (base + slope1)
             if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (vars.totalDebt, 0);
+                return (_toETH(vars.totalDebt, address(investmentToken)), 0);
             }
 
             // we solve Aave's Interest Rates equation for utilisation rates above optimal U
@@ -879,7 +869,10 @@ contract Strategy is BaseStrategy {
             .rayMul(vars.targetUtilizationRate)
             .rayDiv(1e27);
 
-        return (vars.totalDebt, vars.maxProtocolDebt);
+        return (
+            _toETH(vars.totalDebt, address(investmentToken)),
+            _toETH(vars.maxProtocolDebt, address(investmentToken))
+        );
     }
 
     function balanceOfWant() internal view returns (uint256) {
@@ -948,39 +941,38 @@ contract Strategy is BaseStrategy {
             );
     }
 
-    function _setIsWantIncentivised(bool _isWantIncentivised) internal {
-        isWantIncentivised = _isWantIncentivised;
-    }
-
-    function _setIsInvestmentTokenIncentivised(
-        bool _isInvestmentTokenIncentivised
-    ) internal {
-        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
-    }
-
     // ----------------- TOKEN CONVERSIONS -----------------
+    function getTokenOutPath(address _token_in, address _token_out)
+        internal
+        pure
+        returns (address[] memory _path)
+    {
+        bool is_weth =
+            _token_in == address(WETH) || _token_out == address(WETH);
+        _path = new address[](is_weth ? 2 : 3);
+        _path[0] = _token_in;
+
+        if (is_weth) {
+            _path[1] = _token_out;
+        } else {
+            _path[1] = address(WETH);
+            _path[2] = _token_out;
+        }
+    }
 
     function _sellAAVEForWant(uint256 _amount) internal {
         if (_amount == 0) {
             return;
         }
 
-        address[] memory path;
-
-        if (address(want) == address(WETH)) {
-            path = new address[](2);
-            path[0] = address(AAVE);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(AAVE);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
         _checkAllowance(address(router), address(AAVE), _amount);
-
-        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
+        router.swapExactTokensForTokens(
+            _amount,
+            0,
+            getTokenOutPath(address(AAVE), address(want)),
+            address(this),
+            now
+        );
     }
 
     function _sellInvestmentForWant(uint256 _amount) internal {
@@ -993,24 +985,14 @@ contract Strategy is BaseStrategy {
             return;
         }
 
-        address[] memory path;
-        if (
-            address(want) == address(WETH) ||
-            address(investmentToken) == address(WETH)
-        ) {
-            path = new address[](2);
-            path[0] = address(investmentToken);
-            path[1] = address(want);
-        } else {
-            path = new address[](3);
-            path[0] = address(investmentToken);
-            path[1] = address(WETH);
-            path[2] = address(want);
-        }
-
-        _checkAllowance(address(router), path[0], _amount);
-
-        router.swapExactTokensForTokens(_amount, 0, path, address(this), now);
+        _checkAllowance(address(router), address(investmentToken), _amount);
+        router.swapExactTokensForTokens(
+            _amount,
+            0,
+            getTokenOutPath(address(investmentToken), address(want)),
+            address(this),
+            now
+        );
     }
 
     function _buyInvestmentTokenWithWant(uint256 _amount) internal {
@@ -1022,26 +1004,11 @@ contract Strategy is BaseStrategy {
             return;
         }
 
-        address[] memory path;
-        if (
-            address(want) == address(WETH) ||
-            address(investmentToken) == address(WETH)
-        ) {
-            path = new address[](2);
-            path[0] = address(want);
-            path[1] = address(investmentToken);
-        } else {
-            path = new address[](3);
-            path[0] = address(want);
-            path[1] = address(WETH);
-            path[2] = address(investmentToken);
-        }
-        _checkAllowance(address(router), path[0], _amount);
-
+        _checkAllowance(address(router), address(want), _amount);
         router.swapTokensForExactTokens(
             _amount,
             type(uint256).max,
-            path,
+            getTokenOutPath(address(want), address(investmentToken)),
             address(this),
             now
         );

@@ -221,7 +221,7 @@ contract Strategy is BaseStrategy {
 
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-        isWantIncentivised = _isInvestmentTokenIncentivised;
+        isWantIncentivised = _isWantIncentivised;
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
 
         maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
@@ -409,7 +409,6 @@ contract Strategy is BaseStrategy {
         returns (uint256 _liquidatedAmount, uint256 _loss)
     {
         uint256 balance = balanceOfWant();
-        uint256 previousBalance = balance;
         // if we have enough want to take care of the liquidatePosition without actually liquidating positons
         if (balance >= _amountNeeded) {
             return (_amountNeeded, 0);
@@ -557,13 +556,12 @@ contract Strategy is BaseStrategy {
         );
 
         if (amount > 0) {
-            uint256 repaid =
-                _lendingPool().repay(
-                    address(investmentToken),
-                    amount,
-                    uint256(2),
-                    address(this)
-                );
+            _lendingPool().repay(
+                address(investmentToken),
+                amount,
+                uint256(2),
+                address(this)
+            );
         }
     }
 

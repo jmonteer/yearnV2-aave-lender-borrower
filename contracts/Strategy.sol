@@ -135,7 +135,7 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised,
         bool _leaveDebtBehind,
         uint256 _maxLoss
-    ) external onlyAuthorized {
+    ) external onlyEmergencyAuthorized {
         require(
             _warningLTVMultiplier <= MAX_MULTIPLIER &&
                 _targetLTVMultiplier <= _warningLTVMultiplier
@@ -401,6 +401,16 @@ contract Strategy is BaseStrategy {
             uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
             _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         }
+    }
+
+    function liquidateAllPositions()
+        internal
+        override
+        returns (uint256 _amountFreed)
+    {
+        (_amountFreed, ) = liquidatePosition(
+            vault.strategies(address(this)).totalDebt
+        );
     }
 
     function liquidatePosition(uint256 _amountNeeded)
@@ -1030,6 +1040,15 @@ contract Strategy is BaseStrategy {
             _amount.mul(_priceOracle().getAssetPrice(asset)).div(
                 uint256(10)**uint256(IOptionalERC20(asset).decimals())
             );
+    }
+
+    function ethToWant(uint256 _amtInWei)
+        public
+        view
+        override
+        returns (uint256)
+    {
+        return _amtInWei;
     }
 
     function _fromETH(uint256 _amount, address asset)

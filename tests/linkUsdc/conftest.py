@@ -74,8 +74,10 @@ def strategy(strategist, vault, Strategy, yvUSDC):
         Strategy, vault, yvUSDC, False, True, "StrategyLenderLINKBorrowerUSDC"
     )
 
-    vault.revokeStrategy("0x3aD22Fd9e2cc898d6F77AC12eAc603A77a464c45")
     vault.revokeStrategy("0xA875a88dc765BA2B598F858b1D95111D519fd43E")
+    vault.revokeStrategy("0xDb6DF092281718be78F41E7Fea328499dc6088D4")
+    vault.revokeStrategy("0xFB9030A52A420155D1266260271A0a8A23f4443A")
+
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000)
     strategy.setStrategyParams(
         6_000,  # _targetLTVMultiplier

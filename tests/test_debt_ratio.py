@@ -2,7 +2,7 @@ import pytest
 from brownie import chain, Wei
 
 
-def test_increase(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
+def xtest_increase(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(20 * 1e8, {"from": wbtc_whale})
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
@@ -34,6 +34,7 @@ def test_decrease(vault, strategy, gov, wbtc, wbtc_whale):
     chain.mine(1)
 
     vault.updateStrategyDebtRatio(strategy, 5_000, {"from": gov})
+    assert False
     tx = strategy.harvest({"from": gov})
 
     # 15 because it should be less than 20 but there is some profit.

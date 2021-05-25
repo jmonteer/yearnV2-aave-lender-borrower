@@ -132,7 +132,6 @@ def vault_whale_deposit(vault, wbtc, wbtc_whale):
 
     # after test, withdraw
     if vault.balanceOf(wbtc_whale) > 0:
-        print("Withdrawing 100% from vault")
         vault.withdraw({"from": wbtc_whale})
         assert vault.totalAssets() == 0
 
@@ -148,7 +147,6 @@ def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
     weth.transfer(yvETH, Wei("500 ether"), {"from": weth_whale})
     # after test, withdraw
     if vault.balanceOf(wbtc_whale) > 0:
-        print("Withdrawing 100% from vault")
         vault.withdraw({"from": wbtc_whale})
         assert vault.totalAssets() == 0
 

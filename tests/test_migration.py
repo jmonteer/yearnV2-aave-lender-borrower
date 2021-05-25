@@ -9,14 +9,22 @@ def test_migration(
     wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
     vault.deposit(10 * 1e8, {"from": wbtc_whale})
 
-    tx = strategy.harvest({"from": gov})
+    strategy.harvest({"from": gov})
     weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
-    tx = strategy.harvest({"from": gov})
+    strategy.harvest({"from": gov})
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
 
     # Deploy new Strategy and migrate
     strategy2 = gov.deploy(Strategy, vault, yvETH, True, True, "name")
-    # strategy migration is not implemented as debt is not transferrable, does not make much sense
-    with reverts():
-        vault.migrateStrategy(strategy, strategy2, {"from": gov})
+
+    old_debt_ratio = vault.strategies(strategy).dict()["debtRatio"]
+    vault.revokeStrategy(strategy, {"from": gov})
+    strategy.harvest({"from": gov})
+    vault.migrateStrategy(strategy, strategy2, {"from": gov})
+    vault.updateStrategyDebtRatio(strategy2, old_debt_ratio, {"from": gov})
+    strategy2.harvest({"from": gov})
+
+    assert vault.strategies(strategy).dict()["totalDebt"] == 0
+    assert vault.strategies(strategy2).dict()["totalDebt"] > 0
+    assert vault.strategies(strategy2).dict()["debtRatio"] == old_debt_ratio

@@ -748,16 +748,10 @@ contract Strategy is BaseStrategy {
             IStakedAave(stkAave).stakersCooldowns(address(this));
         uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
         uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        if (block.timestamp >= cooldownStartTimestamp.add(COOLDOWN_SECONDS)) {
-            return
-                block.timestamp.sub(
-                    cooldownStartTimestamp.add(COOLDOWN_SECONDS)
-                ) <=
-                UNSTAKE_WINDOW ||
-                cooldownStartTimestamp == 0;
-        }
-
-        return false;
+        return
+            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) ||
+            block.timestamp.sub(cooldownStartTimestamp.add(COOLDOWN_SECONDS)) <= UNSTAKE_WINDOW ||
+            cooldownStartTimestamp == 0;
     }
 
     function _checkAllowance(

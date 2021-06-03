@@ -617,7 +617,8 @@ contract Strategy is BaseStrategy {
             );
 
             // request start of cooldown period
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
+            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                IStakedAave(stkAave).stakersCooldowns(address(this)) == 0) {
                 stkAave.cooldown();
             }
         }

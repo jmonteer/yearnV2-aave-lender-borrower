@@ -750,9 +750,9 @@ contract Strategy is BaseStrategy {
         uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
         uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
         return
-            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) ||
-            block.timestamp.sub(cooldownStartTimestamp.add(COOLDOWN_SECONDS)) <= UNSTAKE_WINDOW ||
-            cooldownStartTimestamp == 0;
+            cooldownStartTimestamp != 0 &&
+            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
+            block.timestamp <= cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
     }
 
     function _checkAllowance(

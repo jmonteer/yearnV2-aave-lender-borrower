@@ -582,11 +582,10 @@ contract Strategy is BaseStrategy {
             uint256 stkAaveBalance =
                 IERC20(address(stkAave)).balanceOf(address(this));
             if (stkAaveBalance > 0 && _checkCooldown()) {
+                // claim AAVE rewards
+                stkAave.claimRewards(address(this), type(uint256).max);
                 stkAave.redeem(address(this), stkAaveBalance);
             }
-
-            // claim AAVE rewards
-            stkAave.claimRewards(address(this), type(uint256).max);
 
             // sell AAVE for want
             // a minimum balance of 0.01 AAVE is required

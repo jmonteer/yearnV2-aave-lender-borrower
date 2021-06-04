@@ -616,8 +616,13 @@ contract Strategy is BaseStrategy {
             );
 
             // request start of cooldown period
+            uint256 cooldownStartTimestamp =
+            IStakedAave(stkAave).stakersCooldowns(address(this));
+            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
+            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
             if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                IStakedAave(stkAave).stakersCooldowns(address(this)) == 0) {
+                (cooldownStartTimestamp == 0) ||
+                block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)) {
                 stkAave.cooldown();
             }
         }

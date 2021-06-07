@@ -545,7 +545,7 @@ contract Strategy is BaseStrategy {
 
             // request start of cooldown period
             uint256 cooldownStartTimestamp =
-                IStakedAave(stkAave).stakersCooldowns(address(this));
+            IStakedAave(stkAave).stakersCooldowns(address(this));
 
             if (
                 IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&

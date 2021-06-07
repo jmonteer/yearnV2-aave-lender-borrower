@@ -373,7 +373,16 @@ contract Strategy is BaseStrategy {
                 );
             }
 
-            _depositInYVault();
+            uint256 balanceIT = balanceOfInvestmentToken();
+            if (balanceIT > 0) {
+                _checkAllowance(
+                    address(yVault),
+                    address(investmentToken),
+                    balanceIT
+                );
+
+                yVault.deposit();
+            }
         } else if (
             currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
         ) {
@@ -571,18 +580,6 @@ contract Strategy is BaseStrategy {
                 uint256(2),
                 address(this)
             );
-        }
-    }
-
-    function _depositInYVault() internal {
-        uint256 balanceIT = balanceOfInvestmentToken();
-        if (balanceIT > 0) {
-            _checkAllowance(
-                address(yVault),
-                address(investmentToken),
-                balanceIT
-            );
-            yVault.deposit();
         }
     }
 

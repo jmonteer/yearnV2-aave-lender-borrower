@@ -110,7 +110,7 @@ def weth_amout(user, weth):
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
-    vault.initialize(token, gov, rewards, management, "", "", guardian, {"from": gov})
+    vault.initialize(token, gov, rewards, "", "", guardian, management, {"from": gov})
 
     vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagementFee(0, {"from": gov})

@@ -582,11 +582,10 @@ contract Strategy is BaseStrategy {
             uint256 stkAaveBalance =
                 IERC20(address(stkAave)).balanceOf(address(this));
             if (stkAaveBalance > 0 && _checkCooldown()) {
+                // claim AAVE rewards
+                stkAave.claimRewards(address(this), type(uint256).max);
                 stkAave.redeem(address(this), stkAaveBalance);
             }
-
-            // claim AAVE rewards
-            stkAave.claimRewards(address(this), type(uint256).max);
 
             // sell AAVE for want
             // a minimum balance of 0.01 AAVE is required
@@ -617,7 +616,13 @@ contract Strategy is BaseStrategy {
             );
 
             // request start of cooldown period
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
+            uint256 cooldownStartTimestamp =
+            IStakedAave(stkAave).stakersCooldowns(address(this));
+            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
+            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
+            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                (cooldownStartTimestamp == 0) ||
+                block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)) {
                 stkAave.cooldown();
             }
         }
@@ -748,16 +753,10 @@ contract Strategy is BaseStrategy {
             IStakedAave(stkAave).stakersCooldowns(address(this));
         uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
         uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        if (block.timestamp >= cooldownStartTimestamp.add(COOLDOWN_SECONDS)) {
-            return
-                block.timestamp.sub(
-                    cooldownStartTimestamp.add(COOLDOWN_SECONDS)
-                ) <=
-                UNSTAKE_WINDOW ||
-                cooldownStartTimestamp == 0;
-        }
-
-        return false;
+        return
+            cooldownStartTimestamp != 0 &&
+            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
+            block.timestamp <= cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
     }
 
     function _checkAllowance(

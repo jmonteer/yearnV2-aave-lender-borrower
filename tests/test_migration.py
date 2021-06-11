@@ -3,20 +3,20 @@ from brownie import chain, Wei, reverts
 
 
 def test_migration(
-    vault, strategy, Strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth
+    vault, strategy, Strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault, vdToken, token_incentivised, borrow_incentivised
 ):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    prev_balance = token.balanceOf(token_whale)
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
 
     strategy.harvest({"from": gov})
-    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
+    borrow_token.transfer(yvault, 20000*(10**borrow_token.decimals()), {"from": borrow_whale})
     strategy.harvest({"from": gov})
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
 
     # Deploy new Strategy and migrate
-    strategy2 = gov.deploy(Strategy, vault, yvETH, True, True, "name")
+    strategy2 = gov.deploy(Strategy, vault, yvault, token_incentivised, borrow_incentivised, "name")
 
     old_debt_ratio = vault.strategies(strategy).dict()["debtRatio"]
     vault.revokeStrategy(strategy, {"from": gov})

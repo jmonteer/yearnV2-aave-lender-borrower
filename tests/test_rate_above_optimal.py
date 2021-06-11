@@ -9,16 +9,29 @@ def get_lp():
 
 
 def test_rate_above_optimal(
-    vault, strategy, gov, wbtc, wbtc_whale, vdweth, weth_whale, yvETH
+    vault, strategy, gov, token, token_whale, vdToken, borrow_whale, yvault, borrow_token, aToken
 ):
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(20 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(20 * (10**token.decimals()), {"from": token_whale})
+
+    strategy.setStrategyParams(
+        strategy.targetLTVMultiplier(),
+        strategy.warningLTVMultiplier(),
+        1e26,
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
+        {"from": strategy.strategist()},
+    )
 
     # This will increase the rate to > 100%
-    increase_interest()
+    increase_interest(borrow_token, borrow_whale)
 
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == 0
+    assert vdToken.balanceOf(strategy) == 0
 
     currentCost = (
         get_lp()
@@ -41,18 +54,16 @@ def test_rate_above_optimal(
     )
 
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) > 0
+    assert vdToken.balanceOf(strategy) > 0
 
 
-def increase_interest():
+def increase_interest(bToken, whale):
     lp = get_lp()
-    weth = Contract("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
-    aeth = Contract("0x030bA81f1c18d280636F32af80b9AAd02Cf0854e")
+    aBorrow = lp.getReserveData(bToken).dict()['aTokenAddress']
+    liquidity = bToken.balanceOf(aBorrow)
+    to_move = liquidity*0.9
+    bToken.transfer(whale, to_move, {"from": aBorrow}) # to bToken to burn it randomly
 
-    liquidity = weth.balanceOf(aeth)
-    to_move = liquidity - Wei("500 ether")
-    weth.transfer(ZERO_ADDRESS, to_move, {"from": aeth})
-
-    # Withdraw 1 ether to update the rates
-    whale = accounts.at("0x4deb3edd991cfd2fcdaa6dcfe5f1743f6e7d16a6", force=True)
-    lp.withdraw(weth, Wei("1 ether"), whale, {"from": whale})
+    # Deposit 1 wei/unit to update the rates
+    bToken.approve(lp, 2 ** 256 -1 , {'from': whale})
+    lp.deposit(bToken, 1, whale, 0, {"from": whale})

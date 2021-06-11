@@ -1,11 +1,11 @@
 import pytest
-from brownie import chain, Wei, Contract
+from brownie import chain, Contract
 
 
-def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+def test_huge_debt(vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault):
+    prev_balance = token.balanceOf(token_whale)
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
     strategy.harvest({"from": gov})
     lp = get_lending_pool()
 
@@ -24,11 +24,11 @@ def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvE
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
 
     vault.withdraw(
-        vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
+        vault.balanceOf(token_whale), token_whale, 10_000, {"from": token_whale}
     )
 
-    print(f"diff {prev_balance-wbtc.balanceOf(wbtc_whale)}")
-    assert prev_balance - wbtc.balanceOf(wbtc_whale) > 0
+    print(f"diff {prev_balance-token.balanceOf(token_whale)}")
+    assert prev_balance - token.balanceOf(token_whale) > 0
 
 
 def get_lending_pool():

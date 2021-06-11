@@ -2,21 +2,21 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
-    ic = get_incentives_controller(awbtc)
-    aToken = awbtc
-    vdToken = vdweth
+def test_rewards(vault, strategy, gov, token, token_whale, aToken, vdToken, yvault):
+    ic = get_incentives_controller(aToken)
+    aToken = aToken
+    vdToken = vdToken
     stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(100 * (10**token.decimals()), {"from": token_whale})
 
     assert ic.getRewardsBalance([aToken], strategy) == 0
     assert ic.getRewardsBalance([vdToken], strategy) == 0
     assert ic.getRewardsBalance([aToken, vdToken], strategy) == 0
 
     tx = strategy.harvest({"from": gov})
-    assert yvETH.balanceOf(strategy) > 0
+    assert yvault.balanceOf(strategy) > 0
 
     chain.sleep(24 * 3600)  # 24 hours pass
     chain.mine(1)
@@ -72,6 +72,6 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
     # assert len(tx.events["RewardsClaimed"]) == 2
 
 
-def get_incentives_controller(awbtc):
-    ic = Contract(awbtc.getIncentivesController())
+def get_incentives_controller(aToken):
+    ic = Contract(aToken.getIncentivesController())
     return ic

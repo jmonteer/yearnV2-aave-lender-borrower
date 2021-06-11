@@ -9,12 +9,11 @@ def test_clone(
     rewards,
     keeper,
     gov,
-    wbtc,
-    awbtc,
-    wbtc_whale,
-    weth,
-    weth_whale,
-    yvETH,
+    token,
+    token_whale,
+    borrow_token,
+    borrow_whale,
+    yvault
 ):
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
@@ -57,8 +56,8 @@ def test_clone(
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(10 * 1e8, {"from": token_whale})
     strategy = cloned_strategy
     print_debug(vault_snx, strategy, lp)
     tx = strategy.harvest({"from": gov})
@@ -70,7 +69,7 @@ def test_clone(
     chain.mine(1)
 
     # Send some profit to yvETH
-    weth.transfer(snx, Wei("2000 ether"), {"from": snx_whale})
+    snx.transfer(vault_snx, 200 * (10**snx.decimals()), {"from": snx_whale})
 
     # TODO: check profits before and after
     strategy.harvest({"from": gov})
@@ -91,7 +90,7 @@ def test_clone(
 
     # so we send profits
     snx.transfer(vault_snx, Wei("1000 ether"), {"from": snx_whale})
-    vault.withdraw({"from": wbtc_whale})
+    vault.withdraw({"from": token_whale})
 
 
 def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):

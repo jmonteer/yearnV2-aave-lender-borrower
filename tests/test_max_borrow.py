@@ -1,10 +1,8 @@
 import pytest
-from brownie import chain, Wei, Contract
 
-
-def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+def test_max_borrow(vault, strategy, gov, token, token_whale, vdToken, borrow_token):
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -19,14 +17,14 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == 0
+    assert vdToken.balanceOf(strategy) == 0
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
         strategy.warningLTVMultiplier(),
         strategy.acceptableCostsRay(),
         0,
-        Wei("2 ether"),
+        2*(10**borrow_token.decimals()),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
@@ -34,4 +32,4 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == Wei("2 ether")
+    assert vdToken.balanceOf(strategy) == 2*(10**borrow_token.decimals())

@@ -590,18 +590,17 @@ contract Strategy is BaseStrategy {
             // redeem AAVE from stkAave
             uint256 stkAaveBalance =
                 IERC20(address(stkAave)).balanceOf(address(this));
+
             if (stkAaveBalance > 0 && _checkCooldown()) {
+                // claim AAVE rewards
+                stkAave.claimRewards(address(this), type(uint256).max);
                 stkAave.redeem(address(this), stkAaveBalance);
             }
-
-            // claim AAVE rewards
-            stkAave.claimRewards(address(this), type(uint256).max);
-
             // sell AAVE for want
             // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
             if (aaveBalance > 1e15) {
-                _sellAAVEForWant(aaveBalance);
+                _sellAForB(aaveBalance, address(AAVE), address(want));
             }
 
             // claim rewards
@@ -626,7 +625,16 @@ contract Strategy is BaseStrategy {
             );
 
             // request start of cooldown period
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0) {
+            uint256 cooldownStartTimestamp =
+                IStakedAave(stkAave).stakersCooldowns(address(this));
+            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
+            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
+            if (
+                (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                    (cooldownStartTimestamp == 0)) ||
+                block.timestamp >
+                cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)
+            ) {
                 stkAave.cooldown();
             }
         }
@@ -757,16 +765,11 @@ contract Strategy is BaseStrategy {
             IStakedAave(stkAave).stakersCooldowns(address(this));
         uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
         uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        if (block.timestamp >= cooldownStartTimestamp.add(COOLDOWN_SECONDS)) {
-            return
-                block.timestamp.sub(
-                    cooldownStartTimestamp.add(COOLDOWN_SECONDS)
-                ) <=
-                UNSTAKE_WINDOW ||
-                cooldownStartTimestamp == 0;
-        }
-
-        return false;
+        return
+            cooldownStartTimestamp != 0 &&
+            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
+            block.timestamp <=
+            cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
     }
 
     function _checkAllowance(
@@ -791,7 +794,11 @@ contract Strategy is BaseStrategy {
         uint256 ySharesToWithdraw = _investmentTokenToYShares(profit);
         if (ySharesToWithdraw > 0) {
             yVault.withdraw(ySharesToWithdraw, address(this), maxLoss);
-            _sellInvestmentForWant(balanceOfInvestmentToken());
+            _sellAForB(
+                balanceOfInvestmentToken(),
+                address(investmentToken),
+                address(want)
+            );
         }
     }
 
@@ -968,31 +975,20 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellAAVEForWant(uint256 _amount) internal {
-        if (_amount == 0) {
+    function _sellAForB(
+        uint256 _amount,
+        address tokenA,
+        address tokenB
+    ) internal {
+        if (_amount == 0 || tokenA == tokenB) {
             return;
         }
 
-        _checkAllowance(address(router), address(AAVE), _amount);
+        _checkAllowance(address(router), tokenA, _amount);
         router.swapExactTokensForTokens(
             _amount,
             0,
-            getTokenOutPath(address(AAVE), address(want)),
-            address(this),
-            now
-        );
-    }
-
-    function _sellInvestmentForWant(uint256 _amount) internal {
-        if (_amount == 0 || address(want) == address(investmentToken)) {
-            return;
-        }
-
-        _checkAllowance(address(router), address(investmentToken), _amount);
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            getTokenOutPath(address(investmentToken), address(want)),
+            getTokenOutPath(tokenA, tokenB),
             address(this),
             now
         );
@@ -1038,7 +1034,7 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256)
     {
-        return _amtInWei;
+        return _fromETH(_amtInWei, address(want));
     }
 
     function _fromETH(uint256 _amount, address asset)

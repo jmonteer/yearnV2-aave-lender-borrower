@@ -8,8 +8,8 @@ def test_operation(
     user_balance_before = token.balanceOf(token_whale)
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
-    amount = 10 * (10**token.decimals())
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 10 * (10 ** token.decimals())
     # Deposit to the vault
     assert token.balanceOf(vault.address) == amount
 
@@ -33,8 +33,8 @@ def test_emergency_exit(
 ):
     # Deposit to the vault
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
-    amount = 10 * (10**token.decimals())
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 10 * (10 ** token.decimals())
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
@@ -60,8 +60,8 @@ def test_profitable_harvest(
 ):
     # Deposit to the vault
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
-    amount = 10 * (10**token.decimals())
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 10 * (10 ** token.decimals())
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
@@ -77,7 +77,9 @@ def test_profitable_harvest(
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
 
-    borrow_token.transfer(yvault, 20_000*(10**borrow_token.decimals()), {"from": borrow_whale})
+    borrow_token.transfer(
+        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     strategy.harvest()
@@ -94,10 +96,10 @@ def test_change_debt(
 ):
     # Deposit to the vault and harvest
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * 1e8, {"from": token_whale})
+    vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
-    amount = 10 * 1e8
+    amount = 100 * (10 ** token.decimals())
     half = int(amount / 2)
 
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
@@ -113,9 +115,11 @@ def test_change_debt(
     # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
-def test_sweep(gov, vault, strategy, token, token_whale, user, borrow_whale, borrow_token):
+def test_sweep(
+    gov, vault, strategy, token, token_whale, user, borrow_whale, borrow_token
+):
     # Strategy want token doesn't work
-    token.transfer(strategy, 10e8, {"from": token_whale})
+    token.transfer(strategy, 10 * (10 ** token.decimals()), {"from": token_whale})
     assert token.address == strategy.want()
     assert token.balanceOf(strategy) > 0
     with brownie.reverts("!want"):
@@ -131,16 +135,23 @@ def test_sweep(gov, vault, strategy, token, token_whale, user, borrow_whale, bor
     #     strategy.sweep(strategy.protectedToken(), {"from": gov})
 
     before_balance = borrow_token.balanceOf(gov)
-    borrow_token.transfer(strategy, 1*(10**borrow_token.decimals()), {"from": borrow_whale})
+    borrow_token.transfer(
+        strategy, 1 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
     assert borrow_token.address != strategy.want()
     strategy.sweep(borrow_token, {"from": gov})
-    assert borrow_token.balanceOf(gov) == 1*(10**borrow_token.decimals()) + before_balance
+    assert (
+        borrow_token.balanceOf(gov)
+        == 1 * (10 ** borrow_token.decimals()) + before_balance
+    )
 
 
-def test_triggers(gov, vault, strategy, token_whale, token, user, borrow_token, strategist):
+def test_triggers(
+    gov, vault, strategy, token_whale, token, user, borrow_token, strategist
+):
     # Deposit to the vault and harvest
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * 1e8, {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
 

@@ -2,12 +2,21 @@ from brownie import chain, reverts, Contract
 
 
 def test_lev_ratios(
-    vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault, vdToken, aToken
+    vault,
+    strategy,
+    gov,
+    token,
+    token_whale,
+    borrow_token,
+    borrow_whale,
+    yvault,
+    vdToken,
+    aToken,
 ):
     lp = get_lending_pool()
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(1000 *(10**token.decimals()), {"from": token_whale})
+    vault.deposit(1000 * (10 ** token.decimals()), {"from": token_whale})
 
     tx = strategy.harvest({"from": gov})
 
@@ -58,7 +67,9 @@ def test_lev_ratios(
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    borrow_token.transfer(yvault, 10_000*(10**borrow_token.decimals()), {"from": borrow_whale})
+    borrow_token.transfer(
+        yvault, 10_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
     previousDebt = vdToken.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)
@@ -79,7 +90,9 @@ def test_lev_ratios(
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    borrow_token.transfer(yvault, 10000*(10**borrow_token.decimals()), {"from": borrow_whale})
+    borrow_token.transfer(
+        yvault, 10000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
     previousDebt = vdToken.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
     print_status(lp, strategy)
@@ -93,7 +106,9 @@ def test_lev_ratios(
     # )  # no debt, no investments
     print(f"TotalAssets:{strategy.estimatedTotalAssets()}")
     print(f"AToken: {aToken.balanceOf(strategy)}")
-    borrow_token.transfer(yvault, 1000*(10**borrow_token.decimals()), {"from": borrow_whale})
+    borrow_token.transfer(
+        yvault, 1000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
 
     vault.withdraw({"from": token_whale})
 

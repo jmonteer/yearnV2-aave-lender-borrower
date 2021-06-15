@@ -148,7 +148,6 @@ contract Strategy is BaseStrategy {
         isWantIncentivised = _isWantIncentivised;
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
         leaveDebtBehind = _leaveDebtBehind;
-        require(maxLoss <= 10_000);
         maxLoss = _maxLoss;
     }
 
@@ -202,9 +201,9 @@ contract Strategy is BaseStrategy {
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) internal {
-        minReportDelay = 24 * 3600;
-        maxReportDelay = 10 * 24 * 3600;
-        profitFactor = 100;
+        // minReportDelay = 24 * 3600;
+        // maxReportDelay = 10 * 24 * 3600;
+        // profitFactor = 100;
         // debtThreshold = 0; It's 0 by default.
 
         yVault = IVault(_yVault);
@@ -985,12 +984,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellInvestmentForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        // NOTE: 1:1
-        if (address(want) == address(investmentToken)) {
+        if (_amount == 0 || address(want) == address(investmentToken)) {
             return;
         }
 
@@ -1005,11 +999,7 @@ contract Strategy is BaseStrategy {
     }
 
     function _buyInvestmentTokenWithWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        if (address(investmentToken) == address(want)) {
+        if (_amount == 0 || address(investmentToken) == address(want)) {
             return;
         }
 

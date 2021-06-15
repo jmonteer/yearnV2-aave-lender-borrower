@@ -9,7 +9,7 @@ def test_rewards(vault, strategy, gov, token, token_whale, aToken, vdToken, yvau
     stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(100 * (10**token.decimals()), {"from": token_whale})
+    vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
 
     assert ic.getRewardsBalance([aToken], strategy) == 0
     assert ic.getRewardsBalance([vdToken], strategy) == 0

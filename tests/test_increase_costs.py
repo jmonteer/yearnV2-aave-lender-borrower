@@ -2,7 +2,16 @@ from brownie import chain, Wei, reverts, Contract
 
 
 def test_increase_costs(
-    vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault, vdToken, aToken
+    vault,
+    strategy,
+    gov,
+    token,
+    token_whale,
+    borrow_token,
+    borrow_whale,
+    yvault,
+    vdToken,
+    aToken,
 ):
     if token.symbol() == "WETH":
         deposit_amount = 500 * (10 ** token.decimals())
@@ -10,7 +19,7 @@ def test_increase_costs(
         deposit_amount = 50 * (10 ** token.decimals())
     elif token.symbol() == "DAI" or token.symbol() == "USDC":
         deposit_amount = 1_000_000 * (10 ** token.decimals())
-    else: 
+    else:
         deposit_amount = 100 * (10 ** token.decimals())
 
     assert vault.totalAssets() == 0
@@ -42,10 +51,18 @@ def test_increase_costs(
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
     # to compensate interest rate on borrowing
-    if borrow_token.symbol() == "USDT" or borrow_token.symbol() == "USDC" or borrow_token.symbol() == "DAI":
-        borrow_token.transfer(yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale})
-    else: 
-        borrow_token.transfer(yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale})
+    if (
+        borrow_token.symbol() == "USDT"
+        or borrow_token.symbol() == "USDC"
+        or borrow_token.symbol() == "DAI"
+    ):
+        borrow_token.transfer(
+            yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    else:
+        borrow_token.transfer(
+            yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
     previousDebt = vdToken.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)
@@ -69,10 +86,18 @@ def test_increase_costs(
     )
 
     # to compensate interest rate on borrowing
-    if borrow_token.symbol() == "USDT" or borrow_token.symbol() == "USDC" or borrow_token.symbol() == "DAI":
-        borrow_token.transfer(yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale})
-    else: 
-        borrow_token.transfer(yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale})
+    if (
+        borrow_token.symbol() == "USDT"
+        or borrow_token.symbol() == "USDC"
+        or borrow_token.symbol() == "DAI"
+    ):
+        borrow_token.transfer(
+            yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    else:
+        borrow_token.transfer(
+            yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
     previousDebt = vdToken.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)

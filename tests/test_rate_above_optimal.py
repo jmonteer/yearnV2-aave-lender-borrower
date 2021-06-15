@@ -9,10 +9,19 @@ def get_lp():
 
 
 def test_rate_above_optimal(
-    vault, strategy, gov, token, token_whale, vdToken, borrow_whale, yvault, borrow_token, aToken
+    vault,
+    strategy,
+    gov,
+    token,
+    token_whale,
+    vdToken,
+    borrow_whale,
+    yvault,
+    borrow_token,
+    aToken,
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(20 * (10**token.decimals()), {"from": token_whale})
+    vault.deposit(20 * (10 ** token.decimals()), {"from": token_whale})
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -59,11 +68,11 @@ def test_rate_above_optimal(
 
 def increase_interest(bToken, whale):
     lp = get_lp()
-    aBorrow = lp.getReserveData(bToken).dict()['aTokenAddress']
+    aBorrow = lp.getReserveData(bToken).dict()["aTokenAddress"]
     liquidity = bToken.balanceOf(aBorrow)
-    to_move = liquidity*0.9
-    bToken.transfer(whale, to_move, {"from": aBorrow}) # to bToken to burn it randomly
+    to_move = liquidity * 0.9
+    bToken.transfer(whale, to_move, {"from": aBorrow})  # to bToken to burn it randomly
 
     # Deposit 1 wei/unit to update the rates
-    bToken.approve(lp, 2 ** 256 -1 , {'from': whale})
+    bToken.approve(lp, 2 ** 256 - 1, {"from": whale})
     lp.deposit(bToken, 1, whale, 0, {"from": whale})

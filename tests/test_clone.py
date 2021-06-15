@@ -13,7 +13,7 @@ def test_clone(
     token_whale,
     borrow_token,
     borrow_whale,
-    yvault
+    yvault,
 ):
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
@@ -69,7 +69,7 @@ def test_clone(
     chain.mine(1)
 
     # Send some profit to yvETH
-    snx.transfer(vault_snx, 200 * (10**snx.decimals()), {"from": snx_whale})
+    snx.transfer(vault_snx, 200 * (10 ** snx.decimals()), {"from": snx_whale})
 
     # TODO: check profits before and after
     strategy.harvest({"from": gov})

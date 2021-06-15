@@ -2,10 +2,12 @@ import pytest
 from brownie import chain, Contract
 
 
-def test_huge_debt(vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault):
+def test_huge_debt(
+    vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault
+):
     prev_balance = token.balanceOf(token_whale)
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     strategy.harvest({"from": gov})
     lp = get_lending_pool()
 

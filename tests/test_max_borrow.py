@@ -1,8 +1,9 @@
 import pytest
 
+
 def test_max_borrow(vault, strategy, gov, token, token_whale, vdToken, borrow_token):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -24,7 +25,7 @@ def test_max_borrow(vault, strategy, gov, token, token_whale, vdToken, borrow_to
         strategy.warningLTVMultiplier(),
         strategy.acceptableCostsRay(),
         0,
-        2*(10**borrow_token.decimals()),
+        2_000 * (10 ** borrow_token.decimals()),
         strategy.isWantIncentivised(),
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
@@ -32,4 +33,4 @@ def test_max_borrow(vault, strategy, gov, token, token_whale, vdToken, borrow_to
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
-    assert vdToken.balanceOf(strategy) == 2*(10**borrow_token.decimals())
+    assert vdToken.balanceOf(strategy) == 2_000 * (10 ** borrow_token.decimals())

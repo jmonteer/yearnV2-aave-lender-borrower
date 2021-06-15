@@ -16,7 +16,7 @@ def test_lev_ratios(
     lp = get_lending_pool()
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(1000 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
 
     tx = strategy.harvest({"from": gov})
 

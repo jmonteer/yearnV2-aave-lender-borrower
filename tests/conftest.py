@@ -109,8 +109,8 @@ addresses = {
 @pytest.fixture(
     params=[
         # 'WBTC', # WBTC
-        # 'YFI', # YFI
-        "WETH",  # WETH
+        'YFI', # YFI
+        # "WETH",  # WETH
         # 'LINK', # LINK
         # 'USDT', # USDT
     ],
@@ -237,7 +237,7 @@ def vault_whale_withdraw(
         strategy
     ) * yvault.pricePerShare() / (10 ** borrow_token.decimals())
     if amount > 0:
-        borrow_token.transfer(yvault, amount * 1_000_000, {"from": borrow_whale})
+        borrow_token.transfer(yvault, amount * 100_000, {"from": borrow_whale})
 
     # after test, withdraw
     if vault.balanceOf(token_whale) > 0:

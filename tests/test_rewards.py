@@ -2,8 +2,8 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_rewards(vault, strategy, gov, token, token_whale, aToken, vdToken, yvault):
-    ic = get_incentives_controller(aToken)
+def test_rewards(vault, strategy, gov, token, token_whale, aToken, vdToken, yvault, token_incentivised, borrow_incentivised):
+    ic = get_incentives_controller(aToken, vdToken, token_incentivised, borrow_incentivised)
     aToken = aToken
     vdToken = vdToken
     stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
@@ -72,6 +72,12 @@ def test_rewards(vault, strategy, gov, token, token_whale, aToken, vdToken, yvau
     # assert len(tx.events["RewardsClaimed"]) == 2
 
 
-def get_incentives_controller(aToken):
-    ic = Contract(aToken.getIncentivesController())
-    return ic
+def get_incentives_controller(aToken, vdToken, token_incentivised, borrow_incentivised):
+    if(token_incentivised):
+        ic = Contract(aToken.getIncentivesController())
+        return ic
+    elif(borrow_incentivised):
+        ic = Contract(vdToken.getIncentivesController())
+        return ic
+    
+    return

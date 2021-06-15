@@ -109,7 +109,7 @@ addresses = {
 @pytest.fixture(
     params=[
         # 'WBTC', # WBTC
-        'YFI', # YFI
+        "YFI",  # YFI
         # "WETH",  # WETH
         # 'LINK', # LINK
         # 'USDT', # USDT

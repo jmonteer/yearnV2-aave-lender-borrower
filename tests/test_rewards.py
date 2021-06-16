@@ -13,6 +13,8 @@ def test_rewards(
     yvault,
     token_incentivised,
     borrow_incentivised,
+    borrow_token,
+    borrow_whale,
 ):
     ic = get_incentives_controller(
         aToken, vdToken, token_incentivised, borrow_incentivised
@@ -36,8 +38,10 @@ def test_rewards(
 
     aTokenRewards = ic.getRewardsBalance([aToken], strategy)
     vdTokenRewards = ic.getRewardsBalance([vdToken], strategy)
-    assert aTokenRewards > 0
-    assert vdTokenRewards > 0
+    if token_incentivised:
+        assert aTokenRewards > 0
+    if borrow_incentivised:
+        assert vdTokenRewards > 0
     assert (
         ic.getRewardsBalance([aToken, vdToken], strategy)
         == vdTokenRewards + aTokenRewards
@@ -51,19 +55,27 @@ def test_rewards(
     assert vdTokenRewards == 0
     assert stkAave.balanceOf(strategy) > 0
     assert stkAave.stakersCooldowns(strategy) != 0
-
-    assert strategy.harvestTrigger(0) == False
+    # Send some profit to yvault
+    borrow_token.transfer(
+        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    assert strategy.harvestTrigger(Wei("1 ether")) == False
     chain.sleep(10 * 24 * 3600 + 1)  # a bit over 10 days passes
     chain.mine(1)
-    assert strategy.harvestTrigger(0) == True
+    assert strategy.harvestTrigger(Wei("1 ether")) == True
 
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
-    assert accumulatedRewards > 0
+    if borrow_incentivised or token_incentivised:
+        assert accumulatedRewards > 0
 
     tx = strategy.harvest({"from": gov})
 
+    # Send some profit to yvault
+    borrow_token.transfer(
+        yvault, 200_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
-    assert strategy.harvestTrigger(0) == False
+    assert strategy.harvestTrigger(Wei("1 ether")) == False
     assert (
         tx.events["Swap"][0]["amount0In"]
         == tx.events["Redeem"][0]["amount"] + tx.events["RewardsClaimed"][0]["amount"]

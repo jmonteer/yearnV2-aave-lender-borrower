@@ -15,6 +15,8 @@ def test_migration(
     vdToken,
     token_incentivised,
     borrow_incentivised,
+    cloner,
+    strategist,
 ):
     prev_balance = token.balanceOf(token_whale)
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
@@ -29,8 +31,17 @@ def test_migration(
     chain.mine(1)
 
     # Deploy new Strategy and migrate
-    strategy2 = gov.deploy(
-        Strategy, vault, yvault, token_incentivised, borrow_incentivised, "name"
+    strategy2 = Strategy.at(
+        cloner.cloneAaveLenderBorrower(
+            vault,
+            strategist,
+            strategist,
+            strategist,
+            yvault,
+            token_incentivised,
+            borrow_incentivised,
+            "name",
+        ).return_value
     )
 
     old_debt_ratio = vault.strategies(strategy).dict()["debtRatio"]

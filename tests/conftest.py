@@ -267,24 +267,8 @@ def borrow_incentivised(borrow_token):
 
 
 @pytest.fixture(scope="function")
-def strategy(
-    strategist,
-    keeper,
-    vault,
-    Strategy,
-    gov,
-    yvault,
-    token_incentivised,
-    borrow_incentivised,
-):
-    strategy = strategist.deploy(
-        Strategy,
-        vault,
-        yvault,
-        token_incentivised,
-        borrow_incentivised,
-        "StrategyLenderWBTCBorrowerWETH",  # TODO: real name
-    )
+def strategy(vault, Strategy, gov, cloner):
+    strategy = Strategy.at(cloner.original())
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
     chain.mine()
     yield strategy
@@ -305,3 +289,26 @@ def clean():
     chain.snapshot()
     yield
     chain.revert()
+
+
+@pytest.fixture(scope="function")
+def cloner(
+    strategist,
+    vault,
+    AaveLenderBorrowerCloner,
+    yvault,
+    token_incentivised,
+    borrow_incentivised,
+    token,
+    borrow_token,
+):
+    cloner = strategist.deploy(
+        AaveLenderBorrowerCloner,
+        vault,
+        yvault,
+        token_incentivised,
+        borrow_incentivised,
+        f"Strategy{token.symbol()}Lender{borrow_token.symbol()}Borrower",
+    )
+
+    yield cloner

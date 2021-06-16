@@ -89,7 +89,7 @@ def test_clone(
         vault.withdraw()
 
     # so we send profits
-    snx.transfer(vault_snx, Wei("1000 ether"), {"from": snx_whale})
+    snx.transfer(vault_snx, Wei("10000 ether"), {"from": snx_whale})
     vault.withdraw({"from": token_whale})
 
 

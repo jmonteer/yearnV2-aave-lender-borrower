@@ -13,6 +13,7 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./WadRayMath.sol";
+import "./libraries/AaveLenderBorrowerLib.sol";
 
 import "./interfaces/ISwap.sol";
 import "./interfaces/IVault.sol";
@@ -73,8 +74,8 @@ contract Strategy is BaseStrategy {
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
-    IProtocolDataProvider internal constant protocolDataProvider =
-        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+    // IProtocolDataProvider internal constant protocolDataProvider =
+    //     IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
 
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
@@ -210,11 +211,11 @@ contract Strategy is BaseStrategy {
         investmentToken = IERC20(IVault(_yVault).token());
 
         (address _aToken, , ) =
-            protocolDataProvider.getReserveTokensAddresses(address(want));
+            _protocolDataProvider().getReserveTokensAddresses(address(want));
         aToken = IAToken(_aToken);
 
         (, , address _variableDebtToken) =
-            protocolDataProvider.getReserveTokensAddresses(
+            _protocolDataProvider().getReserveTokensAddresses(
                 address(investmentToken)
             );
 
@@ -327,7 +328,12 @@ contract Strategy is BaseStrategy {
         // maxProtocolDebt => amount of total debt at which the cost of capital is equal to our acceptable costs
         // if the current protocol debt is higher than the max protocol debt, we will repay debt
         (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
-            _calculateMaxDebt();
+            AaveLenderBorrowerLib.calcMaxDebt(
+                _lendingPool(),
+                _protocolDataProvider(),
+                address(investmentToken),
+                acceptableCostsRay
+            );
 
         if (targetLTV > currentLTV && currentProtocolDebt < maxProtocolDebt) {
             // SUBOPTIMAL RATIO: our current Loan-to-Value is lower than what we want
@@ -523,7 +529,12 @@ contract Strategy is BaseStrategy {
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
         (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
-            _calculateMaxDebt();
+            AaveLenderBorrowerLib.calcMaxDebt(
+                _lendingPool(),
+                _protocolDataProvider(),
+                address(investmentToken),
+                acceptableCostsRay
+            );
 
         if (
             (currentLTV < targetLTV &&
@@ -627,13 +638,10 @@ contract Strategy is BaseStrategy {
             // request start of cooldown period
             uint256 cooldownStartTimestamp =
                 IStakedAave(stkAave).stakersCooldowns(address(this));
-            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
+
             if (
-                (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                    (cooldownStartTimestamp == 0)) ||
-                block.timestamp >
-                cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)
+                IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                (((cooldownStartTimestamp == 0)) || _checkCooldown())
             ) {
                 stkAave.cooldown();
             }
@@ -688,62 +696,57 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        if (amount == 0) {
-            return 0;
-        }
-
-        // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
-        (
-            uint256 totalCollateralETH,
-            uint256 totalDebtETH,
-            ,
-            uint256 currentLiquidationThreshold,
-            ,
-
-        ) = _getAaveUserAccountData();
-
-        uint256 amountToWithdrawETH = _toETH(amount, address(want));
-        // calculate the collateral that we are leaving after withdrawing
-        uint256 newCollateral =
-            totalCollateralETH > amountToWithdrawETH
-                ? totalCollateralETH.sub(amountToWithdrawETH)
-                : 0;
-
-        uint256 ltvAfterWithdrawal =
-            newCollateral > 0
-                ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
-                : type(uint256).max;
-
-        // check if the new LTV is in UNHEALTHY range
-        // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
-        // this is not true but the effect will be the same
-        uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-
-        if (ltvAfterWithdrawal <= warningLTV) {
-            // no need of repaying debt because the LTV is ok
-            return 0;
-        } else if (ltvAfterWithdrawal == type(uint256).max) {
-            // we are withdrawing 100% of collateral so we need to repay full debt
-            return _fromETH(totalDebtETH, address(investmentToken));
-        }
-
-        uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
-        // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
-        // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
-        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
-
-        // if newTargetDebt is higher, we don't need to repay anything
-        if (newTargetDebt > totalDebtETH) {
-            return 0;
-        }
-
-        return
-            _fromETH(
-                totalDebtETH.sub(newTargetDebt) < minThreshold
-                    ? totalDebtETH
-                    : totalDebtETH.sub(newTargetDebt),
-                address(investmentToken)
-            );
+        // if (amount == 0) {
+        //     return 0;
+        // }
+        // _toETH(amount, address(want))
+        // if (amount == 0) {
+        //     return 0;
+        // }
+        // // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
+        // (
+        //     uint256 totalCollateralETH,
+        //     uint256 totalDebtETH,
+        //     ,
+        //     uint256 currentLiquidationThreshold,
+        //     ,
+        // ) = _getAaveUserAccountData();
+        // uint256 amountToWithdrawETH = _toETH(amount, address(want));
+        // // calculate the collateral that we are leaving after withdrawing
+        // uint256 newCollateral =
+        //     totalCollateralETH > amountToWithdrawETH
+        //         ? totalCollateralETH.sub(amountToWithdrawETH)
+        //         : 0;
+        // uint256 ltvAfterWithdrawal =
+        //     newCollateral > 0
+        //         ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
+        //         : type(uint256).max;
+        // // check if the new LTV is in UNHEALTHY range
+        // // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
+        // // this is not true but the effect will be the same
+        // uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
+        // if (ltvAfterWithdrawal <= warningLTV) {
+        //     // no need of repaying debt because the LTV is ok
+        //     return 0;
+        // } else if (ltvAfterWithdrawal == type(uint256).max) {
+        //     // we are withdrawing 100% of collateral so we need to repay full debt
+        //     return _fromETH(totalDebtETH, address(investmentToken));
+        // }
+        // uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
+        // // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
+        // // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
+        // uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
+        // // if newTargetDebt is higher, we don't need to repay anything
+        // if (newTargetDebt > totalDebtETH) {
+        //     return 0;
+        // }
+        // return
+        //     _fromETH(
+        //         totalDebtETH.sub(newTargetDebt) < minThreshold
+        //             ? totalDebtETH
+        //             : totalDebtETH.sub(newTargetDebt),
+        //         address(investmentToken)
+        //     );
     }
 
     function _depositToAave(uint256 amount) internal {
@@ -757,19 +760,12 @@ contract Strategy is BaseStrategy {
     }
 
     function _checkCooldown() internal view returns (bool) {
-        if (!isWantIncentivised && !isInvestmentTokenIncentivised) {
-            return false;
-        }
-
-        uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-        uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-        uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
         return
-            cooldownStartTimestamp != 0 &&
-            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
-            block.timestamp <=
-            cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
+            AaveLenderBorrowerLib.checkCooldown(
+                isWantIncentivised,
+                isInvestmentTokenIncentivised,
+                address(stkAave)
+            );
     }
 
     function _checkAllowance(
@@ -803,92 +799,92 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- INTERNAL CALCS -----------------
-    function _calculateMaxDebt()
-        internal
-        view
-        returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
-    {
-        // This function is used to calculate the maximum amount of debt that the protocol can take
-        // to keep the cost of capital lower than the set acceptableCosts
-        // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
-        // and to repay required debt to keep the rates below acceptable costs
+    // function _calculateMaxDebt()
+    //     internal
+    //     view
+    //     returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
+    // {
+    //     // This function is used to calculate the maximum amount of debt that the protocol can take
+    //     // to keep the cost of capital lower than the set acceptableCosts
+    //     // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
+    //     // and to repay required debt to keep the rates below acceptable costs
 
-        // Hack to avoid the stack too deep compiler error.
-        SupportStructs.CalcMaxDebtLocalVars memory vars;
-        DataTypes.ReserveData memory reserveData =
-            _lendingPool().getReserveData(address(investmentToken));
-        IReserveInterestRateStrategy irs =
-            IReserveInterestRateStrategy(
-                reserveData.interestRateStrategyAddress
-            );
+    //     // Hack to avoid the stack too deep compiler error.
+    //     SupportStructs.CalcMaxDebtLocalVars memory vars;
+    //     DataTypes.ReserveData memory reserveData =
+    //         _lendingPool().getReserveData(address(investmentToken));
+    //     IReserveInterestRateStrategy irs =
+    //         IReserveInterestRateStrategy(
+    //             reserveData.interestRateStrategyAddress
+    //         );
 
-        (
-            vars.availableLiquidity, // = total supply - total stable debt - total variable debt
-            vars.totalStableDebt, // total debt paying stable interest rates
-            vars.totalVariableDebt, // total debt paying stable variable rates
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
+    //     (
+    //         vars.availableLiquidity, // = total supply - total stable debt - total variable debt
+    //         vars.totalStableDebt, // total debt paying stable interest rates
+    //         vars.totalVariableDebt, // total debt paying stable variable rates
+    //         ,
+    //         ,
+    //         ,
+    //         ,
+    //         ,
+    //         ,
 
-        ) = protocolDataProvider.getReserveData(address(investmentToken));
+    //     ) = protocolDataProvider.getReserveData(address(investmentToken));
 
-        vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
-        vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
-        vars.utilizationRate = vars.totalDebt == 0
-            ? 0
-            : vars.totalDebt.rayDiv(vars.totalLiquidity);
+    //     vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
+    //     vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
+    //     vars.utilizationRate = vars.totalDebt == 0
+    //         ? 0
+    //         : vars.totalDebt.rayDiv(vars.totalLiquidity);
 
-        // Aave's Interest Rate Strategy Parameters (see docs)
-        SupportStructs.IrsVars memory irsVars;
-        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
-        irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
-        irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
-        irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
+    //     // Aave's Interest Rate Strategy Parameters (see docs)
+    //     SupportStructs.IrsVars memory irsVars;
+    //     irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
+    //     irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
+    //     irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
+    //     irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
 
-        // acceptableCosts should always be > baseVariableBorrowRate
-        // If it's not this will revert since the strategist set the wrong
-        // acceptableCosts value
-        if (
-            vars.utilizationRate < irsVars.optimalRate &&
-            acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
-        ) {
-            // we solve Aave's Interest Rates equation for sub optimal utilisation rates
-            // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
-            vars.targetUtilizationRate = (
-                acceptableCostsRay.sub(irsVars.baseRate)
-            )
-                .rayMul(irsVars.optimalRate)
-                .rayDiv(irsVars.slope1);
-        } else {
-            // Special case where protocol is above utilization rate but we want
-            // a lower interest rate than (base + slope1)
-            if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (_toETH(vars.totalDebt, address(investmentToken)), 0);
-            }
+    //     // acceptableCosts should always be > baseVariableBorrowRate
+    //     // If it's not this will revert since the strategist set the wrong
+    //     // acceptableCosts value
+    //     if (
+    //         vars.utilizationRate < irsVars.optimalRate &&
+    //         acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
+    //     ) {
+    //         // we solve Aave's Interest Rates equation for sub optimal utilisation rates
+    //         // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
+    //         vars.targetUtilizationRate = (
+    //             acceptableCostsRay.sub(irsVars.baseRate)
+    //         )
+    //             .rayMul(irsVars.optimalRate)
+    //             .rayDiv(irsVars.slope1);
+    //     } else {
+    //         // Special case where protocol is above utilization rate but we want
+    //         // a lower interest rate than (base + slope1)
+    //         if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
+    //             return (_toETH(vars.totalDebt, address(investmentToken)), 0);
+    //         }
 
-            // we solve Aave's Interest Rates equation for utilisation rates above optimal U
-            // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
-            vars.targetUtilizationRate = (
-                acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
-            )
-                .rayMul(uint256(1e27).sub(irsVars.optimalRate))
-                .rayDiv(irsVars.slope2)
-                .add(irsVars.optimalRate);
-        }
+    //         // we solve Aave's Interest Rates equation for utilisation rates above optimal U
+    //         // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
+    //         vars.targetUtilizationRate = (
+    //             acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
+    //         )
+    //             .rayMul(uint256(1e27).sub(irsVars.optimalRate))
+    //             .rayDiv(irsVars.slope2)
+    //             .add(irsVars.optimalRate);
+    //     }
 
-        vars.maxProtocolDebt = vars
-            .totalLiquidity
-            .rayMul(vars.targetUtilizationRate)
-            .rayDiv(1e27);
+    //     vars.maxProtocolDebt = vars
+    //         .totalLiquidity
+    //         .rayMul(vars.targetUtilizationRate)
+    //         .rayDiv(1e27);
 
-        return (
-            _toETH(vars.totalDebt, address(investmentToken)),
-            _toETH(vars.maxProtocolDebt, address(investmentToken))
-        );
-    }
+    //     return (
+    //         _toETH(vars.totalDebt, address(investmentToken)),
+    //         _toETH(vars.maxProtocolDebt, address(investmentToken))
+    //     );
+    // }
 
     function balanceOfWant() internal view returns (uint256) {
         return want.balanceOf(address(this));
@@ -1021,11 +1017,7 @@ contract Strategy is BaseStrategy {
         ) {
             return _amount;
         }
-
-        return
-            _amount.mul(_priceOracle().getAssetPrice(asset)).div(
-                uint256(10)**uint256(IOptionalERC20(asset).decimals())
-            );
+        AaveLenderBorrowerLib.toETH(_amount, asset);
     }
 
     function ethToWant(uint256 _amtInWei)
@@ -1049,26 +1041,25 @@ contract Strategy is BaseStrategy {
         ) {
             return _amount;
         }
-
-        return
-            _amount
-                .mul(uint256(10)**uint256(IOptionalERC20(asset).decimals()))
-                .div(_priceOracle().getAssetPrice(asset));
+        return AaveLenderBorrowerLib.fromETH(_amount, asset);
     }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------
 
     function _lendingPool() internal view returns (ILendingPool lendingPool) {
-        lendingPool = ILendingPool(
-            protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()
-        );
+        return AaveLenderBorrowerLib.lendingPool();
+    }
+
+    function _protocolDataProvider()
+        internal
+        view
+        returns (IProtocolDataProvider protocolDataProvider)
+    {
+        return AaveLenderBorrowerLib.protocolDataProvider();
     }
 
     function _priceOracle() internal view returns (IPriceOracle) {
-        return
-            IPriceOracle(
-                protocolDataProvider.ADDRESSES_PROVIDER().getPriceOracle()
-            );
+        return AaveLenderBorrowerLib.priceOracle();
     }
 
     function _incentivesController()
@@ -1076,13 +1067,13 @@ contract Strategy is BaseStrategy {
         view
         returns (IAaveIncentivesController)
     {
-        if (isWantIncentivised) {
-            return aToken.getIncentivesController();
-        } else if (isInvestmentTokenIncentivised) {
-            return variableDebtToken.getIncentivesController();
-        } else {
-            return IAaveIncentivesController(0);
-        }
+        return
+            AaveLenderBorrowerLib.incentivesController(
+                aToken,
+                variableDebtToken,
+                isWantIncentivised,
+                isInvestmentTokenIncentivised
+            );
     }
 
     function protectedTokens()

@@ -17,11 +17,9 @@ contract AaveLenderBorrowerCloner {
         bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public {
-        emit Deployed(address(0));
-
         Strategy _original = new Strategy(_vault, _yVault, _strategyName);
-        emit Deployed(address(0));
         emit Deployed(address(_original));
+
         original = address(_original);
         Strategy(_original).setStrategyParams(
             4_000, // targetLTVMultiplier (default: 4_000)

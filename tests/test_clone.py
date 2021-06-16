@@ -14,6 +14,7 @@ def test_clone(
     borrow_token,
     borrow_whale,
     yvault,
+    cloner
 ):
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
@@ -21,7 +22,7 @@ def test_clone(
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
     snx = Contract(vault_snx.token())
     snx_whale = "0xA1d7b2d891e3A1f9ef4bBC5be20630C2FEB1c470"
-    clone_tx = strategy.cloneAaveLenderBorrower(
+    clone_tx = cloner.cloneAaveLenderBorrower(
         vault,
         strategist,
         rewards,
@@ -48,16 +49,17 @@ def test_clone(
         {"from": strategy.strategist()},
     )
 
+    # should fail due to already initialized
     with reverts():
         strategy.initialize(
-            vault, strategist, rewards, keeper, vault_snx, True, False, "NameRevert"
+            vault, vault_snx, "NameRevert", {"from": gov}
         )
 
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * 1e8, {"from": token_whale})
+    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
     strategy = cloned_strategy
     print_debug(vault_snx, strategy, lp)
     tx = strategy.harvest({"from": gov})
@@ -89,14 +91,14 @@ def test_clone(
         vault.withdraw()
 
     # so we send profits
-    snx.transfer(vault_snx, Wei("1000 ether"), {"from": snx_whale})
+    snx.transfer(vault_snx, Wei("10_000 ether"), {"from": snx_whale})
     vault.withdraw({"from": token_whale})
 
 
-def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
+def test_clone_of_clone(vault, strategist, rewards, keeper, strategy,cloner):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
 
-    clone_tx = strategy.cloneAaveLenderBorrower(
+    clone_tx = cloner.cloneAaveLenderBorrower(
         vault,
         strategist,
         rewards,
@@ -109,20 +111,6 @@ def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
     cloned_strategy = Contract.from_abi(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
     )
-
-    # should not clone a clone
-    with reverts():
-        cloned_strategy.cloneAaveLenderBorrower(
-            vault,
-            strategist,
-            rewards,
-            keeper,
-            vault_snx,
-            True,
-            False,
-            "StrategyAaveLenderWBTCBorrowerSNX",
-            {"from": strategist},
-        )
 
 
 def print_debug(yvSNX, strategy, lp):

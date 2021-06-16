@@ -14,11 +14,11 @@ def test_operation(
     assert token.balanceOf(vault.address) == amount
 
     # harvest
-    strategy.harvest()
+    strategy.harvest({'from': strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()
-    strategy.tend()
+    strategy.tend({'from': strategist})
 
     # withdrawal
     vault.withdraw({"from": token_whale})
@@ -39,8 +39,8 @@ def test_emergency_exit(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # set emergency and exit
-    strategy.setEmergencyExit()
-    strategy.harvest()
+    strategy.setEmergencyExit({'from': strategist})
+    strategy.harvest({'from': strategist})
     assert strategy.estimatedTotalAssets() < amount
 
 
@@ -65,14 +65,14 @@ def test_profitable_harvest(
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
-    strategy.harvest()
+    strategy.harvest({'from': strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # increase rewards, lending interest and borrowing interests
     chain.sleep(50 * 24 * 3600)
     chain.mine(1)
 
-    strategy.harvest()  # to claim and start cooldown
+    strategy.harvest({'from': strategist})  # to claim and start cooldown
 
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
@@ -82,7 +82,7 @@ def test_profitable_harvest(
     )
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
-    strategy.harvest()
+    strategy.harvest({'from': strategist})
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
     profit = token.balanceOf(vault.address)  # Profits go to vault
@@ -98,7 +98,7 @@ def test_change_debt(
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
     vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    strategy.harvest()
+    strategy.harvest({'from': gov})
     amount = 100 * (10 ** token.decimals())
     half = int(amount / 2)
 
@@ -153,7 +153,7 @@ def test_triggers(
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
     vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    strategy.harvest()
+    strategy.harvest({'from': gov})
 
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)

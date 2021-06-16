@@ -33,7 +33,6 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
-    bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
     uint256 public acceptableCostsRay = 1e27;
@@ -86,16 +85,9 @@ contract Strategy is BaseStrategy {
     constructor(
         address _vault,
         address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        _initializeThis(
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
+        _initializeThis(_yVault, _strategyName);
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
@@ -151,68 +143,14 @@ contract Strategy is BaseStrategy {
         maxLoss = _maxLoss;
     }
 
-    event Cloned(address indexed clone);
-
-    function cloneAaveLenderBorrower(
-        address _vault,
-        address _strategist,
-        address _rewards,
-        address _keeper,
-        address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
-        string memory _strategyName
-    ) external returns (address newStrategy) {
-        require(isOriginal);
-        // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
-        bytes20 addressBytes = bytes20(address(this));
-        assembly {
-            // EIP-1167 bytecode
-            let clone_code := mload(0x40)
-            mstore(
-                clone_code,
-                0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000
-            )
-            mstore(add(clone_code, 0x14), addressBytes)
-            mstore(
-                add(clone_code, 0x28),
-                0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000
-            )
-            newStrategy := create(0, clone_code, 0x37)
-        }
-
-        Strategy(newStrategy).initialize(
-            _vault,
-            _strategist,
-            _rewards,
-            _keeper,
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
-
-        emit Cloned(newStrategy);
-    }
-
-    function _initializeThis(
-        address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
-        string memory _strategyName
-    ) internal {
-        // minReportDelay = 24 * 3600;
-        // maxReportDelay = 10 * 24 * 3600;
-        // profitFactor = 100;
-        // debtThreshold = 0; It's 0 by default.
-
+    function _initializeThis(address _yVault, string memory _strategyName)
+        internal
+    {
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
-
         (address _aToken, , ) =
             protocolDataProvider.getReserveTokensAddresses(address(want));
         aToken = IAToken(_aToken);
-
         (, , address _variableDebtToken) =
             protocolDataProvider.getReserveTokensAddresses(
                 address(investmentToken)
@@ -220,33 +158,18 @@ contract Strategy is BaseStrategy {
 
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-        isWantIncentivised = _isWantIncentivised;
-        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
 
-        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
-
-        maxLoss = 1;
         strategyName = _strategyName;
     }
 
     function initialize(
         address _vault,
-        address _strategist,
-        address _rewards,
-        address _keeper,
         address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public {
-        _initialize(_vault, _strategist, _rewards, _keeper);
-        require(address(yVault) == address(0));
-        _initializeThis(
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
+        address sender = msg.sender;
+        _initialize(_vault, sender, sender, sender);
+        _initializeThis(_yVault, _strategyName);
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -630,10 +553,12 @@ contract Strategy is BaseStrategy {
             uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
             uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
             if (
-                (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                    (cooldownStartTimestamp == 0)) ||
-                block.timestamp >
-                cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)
+                IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                (((cooldownStartTimestamp == 0)) ||
+                    block.timestamp >
+                    cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(
+                        UNSTAKE_WINDOW
+                    ))
             ) {
                 stkAave.cooldown();
             }

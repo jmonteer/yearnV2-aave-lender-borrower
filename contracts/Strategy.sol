@@ -696,57 +696,54 @@ contract Strategy is BaseStrategy {
         view
         returns (uint256)
     {
-        // if (amount == 0) {
-        //     return 0;
-        // }
-        // _toETH(amount, address(want))
-        // if (amount == 0) {
-        //     return 0;
-        // }
-        // // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
-        // (
-        //     uint256 totalCollateralETH,
-        //     uint256 totalDebtETH,
-        //     ,
-        //     uint256 currentLiquidationThreshold,
-        //     ,
-        // ) = _getAaveUserAccountData();
-        // uint256 amountToWithdrawETH = _toETH(amount, address(want));
-        // // calculate the collateral that we are leaving after withdrawing
-        // uint256 newCollateral =
-        //     totalCollateralETH > amountToWithdrawETH
-        //         ? totalCollateralETH.sub(amountToWithdrawETH)
-        //         : 0;
-        // uint256 ltvAfterWithdrawal =
-        //     newCollateral > 0
-        //         ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
-        //         : type(uint256).max;
-        // // check if the new LTV is in UNHEALTHY range
-        // // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
-        // // this is not true but the effect will be the same
-        // uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-        // if (ltvAfterWithdrawal <= warningLTV) {
-        //     // no need of repaying debt because the LTV is ok
-        //     return 0;
-        // } else if (ltvAfterWithdrawal == type(uint256).max) {
-        //     // we are withdrawing 100% of collateral so we need to repay full debt
-        //     return _fromETH(totalDebtETH, address(investmentToken));
-        // }
-        // uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
-        // // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
-        // // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
-        // uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
-        // // if newTargetDebt is higher, we don't need to repay anything
-        // if (newTargetDebt > totalDebtETH) {
-        //     return 0;
-        // }
-        // return
-        //     _fromETH(
-        //         totalDebtETH.sub(newTargetDebt) < minThreshold
-        //             ? totalDebtETH
-        //             : totalDebtETH.sub(newTargetDebt),
-        //         address(investmentToken)
-        //     );
+        if (amount == 0) {
+            return 0;
+        }
+        // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
+        (
+            uint256 totalCollateralETH,
+            uint256 totalDebtETH,
+            ,
+            uint256 currentLiquidationThreshold,
+            ,
+
+        ) = _getAaveUserAccountData();
+        uint256 amountToWithdrawETH = _toETH(amount, address(want));
+        // calculate the collateral that we are leaving after withdrawing
+        uint256 newCollateral =
+            totalCollateralETH > amountToWithdrawETH
+                ? totalCollateralETH.sub(amountToWithdrawETH)
+                : 0;
+        uint256 ltvAfterWithdrawal =
+            newCollateral > 0
+                ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
+                : type(uint256).max;
+        // check if the new LTV is in UNHEALTHY range
+        // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
+        // this is not true but the effect will be the same
+        uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
+        if (ltvAfterWithdrawal <= warningLTV) {
+            // no need of repaying debt because the LTV is ok
+            return 0;
+        } else if (ltvAfterWithdrawal == type(uint256).max) {
+            // we are withdrawing 100% of collateral so we need to repay full debt
+            return _fromETH(totalDebtETH, address(investmentToken));
+        }
+        uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
+        // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
+        // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
+        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
+        // if newTargetDebt is higher, we don't need to repay anything
+        if (newTargetDebt > totalDebtETH) {
+            return 0;
+        }
+        return
+            _fromETH(
+                totalDebtETH.sub(newTargetDebt) < minThreshold
+                    ? totalDebtETH
+                    : totalDebtETH.sub(newTargetDebt),
+                address(investmentToken)
+            );
     }
 
     function _depositToAave(uint256 amount) internal {
@@ -799,93 +796,6 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- INTERNAL CALCS -----------------
-    // function _calculateMaxDebt()
-    //     internal
-    //     view
-    //     returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
-    // {
-    //     // This function is used to calculate the maximum amount of debt that the protocol can take
-    //     // to keep the cost of capital lower than the set acceptableCosts
-    //     // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
-    //     // and to repay required debt to keep the rates below acceptable costs
-
-    //     // Hack to avoid the stack too deep compiler error.
-    //     SupportStructs.CalcMaxDebtLocalVars memory vars;
-    //     DataTypes.ReserveData memory reserveData =
-    //         _lendingPool().getReserveData(address(investmentToken));
-    //     IReserveInterestRateStrategy irs =
-    //         IReserveInterestRateStrategy(
-    //             reserveData.interestRateStrategyAddress
-    //         );
-
-    //     (
-    //         vars.availableLiquidity, // = total supply - total stable debt - total variable debt
-    //         vars.totalStableDebt, // total debt paying stable interest rates
-    //         vars.totalVariableDebt, // total debt paying stable variable rates
-    //         ,
-    //         ,
-    //         ,
-    //         ,
-    //         ,
-    //         ,
-
-    //     ) = protocolDataProvider.getReserveData(address(investmentToken));
-
-    //     vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
-    //     vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
-    //     vars.utilizationRate = vars.totalDebt == 0
-    //         ? 0
-    //         : vars.totalDebt.rayDiv(vars.totalLiquidity);
-
-    //     // Aave's Interest Rate Strategy Parameters (see docs)
-    //     SupportStructs.IrsVars memory irsVars;
-    //     irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
-    //     irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
-    //     irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
-    //     irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
-
-    //     // acceptableCosts should always be > baseVariableBorrowRate
-    //     // If it's not this will revert since the strategist set the wrong
-    //     // acceptableCosts value
-    //     if (
-    //         vars.utilizationRate < irsVars.optimalRate &&
-    //         acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
-    //     ) {
-    //         // we solve Aave's Interest Rates equation for sub optimal utilisation rates
-    //         // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
-    //         vars.targetUtilizationRate = (
-    //             acceptableCostsRay.sub(irsVars.baseRate)
-    //         )
-    //             .rayMul(irsVars.optimalRate)
-    //             .rayDiv(irsVars.slope1);
-    //     } else {
-    //         // Special case where protocol is above utilization rate but we want
-    //         // a lower interest rate than (base + slope1)
-    //         if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-    //             return (_toETH(vars.totalDebt, address(investmentToken)), 0);
-    //         }
-
-    //         // we solve Aave's Interest Rates equation for utilisation rates above optimal U
-    //         // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
-    //         vars.targetUtilizationRate = (
-    //             acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
-    //         )
-    //             .rayMul(uint256(1e27).sub(irsVars.optimalRate))
-    //             .rayDiv(irsVars.slope2)
-    //             .add(irsVars.optimalRate);
-    //     }
-
-    //     vars.maxProtocolDebt = vars
-    //         .totalLiquidity
-    //         .rayMul(vars.targetUtilizationRate)
-    //         .rayDiv(1e27);
-
-    //     return (
-    //         _toETH(vars.totalDebt, address(investmentToken)),
-    //         _toETH(vars.maxProtocolDebt, address(investmentToken))
-    //     );
-    // }
-
     function balanceOfWant() internal view returns (uint256) {
         return want.balanceOf(address(this));
     }

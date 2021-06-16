@@ -18,7 +18,7 @@ def test_revoke_strategy_from_vault(
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": token_whale})
     vault.deposit(amount, {"from": token_whale})
-    strategy.harvest({'from': gov})
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     vault.revokeStrategy(strategy.address, {"from": gov})
@@ -28,7 +28,7 @@ def test_revoke_strategy_from_vault(
         yvault, 1000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
     )
 
-    strategy.harvest({'from': gov})
+    strategy.harvest({"from": gov})
     assert vdToken.balanceOf(strategy) == 0
     assert aToken.balanceOf(strategy) == 0
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
@@ -41,7 +41,7 @@ def test_revoke_strategy_from_strategy(
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": token_whale})
     vault.deposit(amount, {"from": token_whale})
-    strategy.harvest({'from': gov})
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     strategy.setEmergencyExit()

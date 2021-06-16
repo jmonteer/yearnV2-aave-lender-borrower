@@ -15,7 +15,7 @@ def test_migration(
     vdToken,
     token_incentivised,
     borrow_incentivised,
-    cloner
+    cloner,
 ):
     prev_balance = token.balanceOf(token_whale)
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})

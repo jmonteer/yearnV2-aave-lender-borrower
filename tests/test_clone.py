@@ -14,7 +14,7 @@ def test_clone(
     borrow_token,
     borrow_whale,
     yvault,
-    cloner
+    cloner,
 ):
     pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
@@ -51,15 +51,13 @@ def test_clone(
 
     # should fail due to already initialized
     with reverts():
-        strategy.initialize(
-            vault, vault_snx, "NameRevert", {"from": gov}
-        )
+        strategy.initialize(vault, vault_snx, "NameRevert", {"from": gov})
 
     vault.updateStrategyDebtRatio(strategy, 0, {"from": gov})
     vault.addStrategy(cloned_strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10**token.decimals()), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     strategy = cloned_strategy
     print_debug(vault_snx, strategy, lp)
     tx = strategy.harvest({"from": gov})
@@ -95,7 +93,7 @@ def test_clone(
     vault.withdraw({"from": token_whale})
 
 
-def test_clone_of_clone(vault, strategist, rewards, keeper, strategy,cloner):
+def test_clone_of_clone(vault, strategist, rewards, keeper, strategy, cloner):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
 
     clone_tx = cloner.cloneAaveLenderBorrower(

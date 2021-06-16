@@ -35,7 +35,7 @@ def test_emergency_exit(
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
     vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     amount = 10 * (10 ** token.decimals())
-    strategy.harvest()
+    strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # set emergency and exit
@@ -105,7 +105,7 @@ def test_change_debt(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # In order to pass this tests, you will need to implement prepareReturn.

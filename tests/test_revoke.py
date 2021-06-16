@@ -44,6 +44,6 @@ def test_revoke_strategy_from_strategy(
     strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    strategy.setEmergencyExit()
-    strategy.harvest()
+    strategy.setEmergencyExit({"from": gov})
+    strategy.harvest({"from": gov})
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount

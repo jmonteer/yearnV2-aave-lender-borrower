@@ -26,7 +26,7 @@ def test_revoke_with_profit(
     vault.revokeStrategy(strategy, {"from": gov})
     strategy.harvest({"from": gov})
 
-    assert vdToken.balanceOf(strategy) == 0
-    assert aToken.balanceOf(strategy) == 0
+    assert vdToken.balanceOf(strategy) <= 1
+    assert aToken.balanceOf(strategy) <= 1
     assert vault.strategies(strategy).dict()["totalGain"] > 0
-    assert vault.strategies(strategy).dict()["totalDebt"] == 0
+    assert vault.strategies(strategy).dict()["totalDebt"] <= 1

@@ -13,7 +13,8 @@ def test_rewards(
     yvault,
     token_incentivised,
     borrow_incentivised,
-    borrow_token, borrow_whale
+    borrow_token,
+    borrow_whale,
 ):
     ic = get_incentives_controller(
         aToken, vdToken, token_incentivised, borrow_incentivised
@@ -37,8 +38,10 @@ def test_rewards(
 
     aTokenRewards = ic.getRewardsBalance([aToken], strategy)
     vdTokenRewards = ic.getRewardsBalance([vdToken], strategy)
-    if token_incentivised: assert aTokenRewards > 0
-    if borrow_incentivised: assert vdTokenRewards > 0
+    if token_incentivised:
+        assert aTokenRewards > 0
+    if borrow_incentivised:
+        assert vdTokenRewards > 0
     assert (
         ic.getRewardsBalance([aToken, vdToken], strategy)
         == vdTokenRewards + aTokenRewards
@@ -62,7 +65,8 @@ def test_rewards(
     assert strategy.harvestTrigger(Wei("1 ether")) == True
 
     accumulatedRewards = ic.getRewardsBalance([vdToken, aToken], strategy)
-    if borrow_incentivised or token_incentivised: assert accumulatedRewards > 0
+    if borrow_incentivised or token_incentivised:
+        assert accumulatedRewards > 0
 
     tx = strategy.harvest({"from": gov})
 

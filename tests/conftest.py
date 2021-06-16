@@ -294,9 +294,11 @@ def strategy(
 def RELATIVE_APPROX():
     yield 1e-5
 
+
 @pytest.fixture(scope="session", autouse=True)
 def AaveLibrary(gov, AaveLenderBorrowerLib):
-    AaveLenderBorrowerLib.deploy({'from': gov})
+    AaveLenderBorrowerLib.deploy({"from": gov})
+
 
 @pytest.fixture(autouse=False)
 def clean():

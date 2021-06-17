@@ -39,7 +39,7 @@ contract AaveLenderBorrowerCloner {
     }
 
     function name() external pure returns (string memory) {
-        return "Yearn-AaveLenderBorrowerCloner";
+        return "Yearn-AaveLenderBorrowerCloner@0.4.2-1";
     }
 
     function cloneAaveLenderBorrower(
@@ -76,7 +76,7 @@ contract AaveLenderBorrowerCloner {
             6_000, // warningLTVMultiplier default: 6_000
             1e27, // acceptableCosts (default: 1e27)
             7, // default: 7 (Yearn Aave Referal code)
-            type(uint256).max, // 2**256
+            type(uint256).max, // max debt to take
             _isWantIncentivised,
             _isInvestmentTokenIncentivised,
             false, // leave debt behind (default: false)

@@ -72,9 +72,6 @@ contract Strategy is BaseStrategy {
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
-    // IProtocolDataProvider internal constant protocolDataProvider =
-    //     IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
-
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
 
@@ -545,7 +542,7 @@ contract Strategy is BaseStrategy {
 
             // request start of cooldown period
             uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
+                IStakedAave(stkAave).stakersCooldowns(address(this));
 
             if (
                 IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
@@ -601,6 +598,7 @@ contract Strategy is BaseStrategy {
 
     function _calculateAmountToRepay(uint256 amount)
         internal
+        view
         returns (uint256)
     {
         if (amount == 0) {
@@ -849,7 +847,7 @@ contract Strategy is BaseStrategy {
         view
         returns (IProtocolDataProvider protocolDataProvider)
     {
-        return AaveLenderBorrowerLib.protocolDataProvider();
+        return AaveLenderBorrowerLib.protocolDataProvider;
     }
 
     function _priceOracle() internal view returns (IPriceOracle) {

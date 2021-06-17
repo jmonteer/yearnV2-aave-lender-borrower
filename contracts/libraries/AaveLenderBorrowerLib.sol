@@ -36,30 +36,21 @@ library AaveLenderBorrowerLib {
         uint256 slope2;
     }
 
-    function protocolDataProvider()
-        public
-        view
-        returns (IProtocolDataProvider)
-    {
-        return
-            IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
-    }
-
-    function MAX_BPS() internal view returns (uint256) {
-        return 10_000;
-    }
+    uint256 internal constant MAX_BPS = 10_000;
+    IProtocolDataProvider public constant protocolDataProvider =
+        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
 
     function lendingPool() public view returns (ILendingPool) {
         return
             ILendingPool(
-                protocolDataProvider().ADDRESSES_PROVIDER().getLendingPool()
+                protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()
             );
     }
 
     function priceOracle() public view returns (IPriceOracle) {
         return
             IPriceOracle(
-                protocolDataProvider().ADDRESSES_PROVIDER().getPriceOracle()
+                protocolDataProvider.ADDRESSES_PROVIDER().getPriceOracle()
             );
     }
 
@@ -130,7 +121,7 @@ library AaveLenderBorrowerLib {
             ,
             ,
 
-        ) = protocolDataProvider().getReserveData(address(_investmentToken));
+        ) = protocolDataProvider.getReserveData(address(_investmentToken));
 
         vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
         vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
@@ -208,7 +199,7 @@ library AaveLenderBorrowerLib {
                 : 0;
         uint256 ltvAfterWithdrawal =
             newCollateral > 0
-                ? totalDebtETH.mul(MAX_BPS()).div(newCollateral)
+                ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
                 : type(uint256).max;
         // check if the new LTV is in UNHEALTHY range
         // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
@@ -222,7 +213,7 @@ library AaveLenderBorrowerLib {
         }
         // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
         // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
-        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS());
+        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
         // if newTargetDebt is higher, we don't need to repay anything
         if (newTargetDebt > totalDebtETH) {
             return 0;
@@ -264,8 +255,7 @@ library AaveLenderBorrowerLib {
         uint256 totalCollateralETH,
         uint256 totalDebtETH
     ) external view returns (bool) {
-        uint256 currentLTV =
-            totalDebtETH.mul(MAX_BPS()).div(totalCollateralETH);
+        uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
 
         (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
             calcMaxDebt(investmentToken, acceptableCostsRay);

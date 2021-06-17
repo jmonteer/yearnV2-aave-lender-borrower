@@ -30,7 +30,7 @@ def test_clone(
         vault_snx,
         True,
         False,
-        "StrategyAaveLenderWBTCBorrowerSNX",
+        "StrategyAaveLender" + token.symbol() + "BorrowerSNX",
     )
     cloned_strategy = Contract.from_abi(
         "Strategy", clone_tx.events["Cloned"]["clone"], strategy.abi
@@ -89,7 +89,7 @@ def test_clone(
         vault.withdraw()
 
     # so we send profits
-    snx.transfer(vault_snx, Wei("10_000 ether"), {"from": snx_whale})
+    snx.transfer(vault_snx, Wei("30_000 ether"), {"from": snx_whale})
     vault.withdraw({"from": token_whale})
 
 

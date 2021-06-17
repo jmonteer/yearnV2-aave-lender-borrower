@@ -18,7 +18,6 @@ import "./libraries/AaveLenderBorrowerLib.sol";
 import "./interfaces/ISwap.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/aave/IAToken.sol";
-import "./libraries/SupportStructs.sol";
 import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/aave/IStakedAave.sol";
 import "./interfaces/aave/IPriceOracle.sol";
@@ -252,8 +251,6 @@ contract Strategy is BaseStrategy {
         // if the current protocol debt is higher than the max protocol debt, we will repay debt
         (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
             AaveLenderBorrowerLib.calcMaxDebt(
-                _lendingPool(),
-                _protocolDataProvider(),
                 address(investmentToken),
                 acceptableCostsRay
             );
@@ -360,7 +357,6 @@ contract Strategy is BaseStrategy {
         if (balance >= _amountNeeded) {
             return (_amountNeeded, 0);
         }
-
         // NOTE: amountNeeded is in want
         // NOTE: repayment amount is in investmentToken
         // NOTE: collateral and debt calcs are done in ETH (always, see Aave docs)
@@ -438,7 +434,6 @@ contract Strategy is BaseStrategy {
         // we adjust position if:
         // 1. LTV ratios are not in the HEALTHY range (either we take on more debt or repay debt)
         // 2. costs are not acceptable and we need to repay debt
-
         (
             uint256 totalCollateralETH,
             uint256 totalDebtETH,
@@ -448,28 +443,18 @@ contract Strategy is BaseStrategy {
 
         ) = _getAaveUserAccountData();
 
-        uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
-            AaveLenderBorrowerLib.calcMaxDebt(
-                _lendingPool(),
-                _protocolDataProvider(),
+
+        return
+            AaveLenderBorrowerLib.shouldRebalance(
                 address(investmentToken),
-                acceptableCostsRay
+                acceptableCostsRay,
+                targetLTV,
+                warningLTV,
+                totalCollateralETH,
+                totalDebtETH
             );
-
-        if (
-            (currentLTV < targetLTV &&
-                currentProtocolDebt < maxProtocolDebt &&
-                targetLTV.sub(currentLTV) > 100) || // WE NEED TO TAKE ON MORE DEBT
-            (currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt) // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
-        ) {
-            return true;
-        }
-
-        // no call to super.tendTrigger as it would return false
-        return false;
     }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
@@ -616,7 +601,6 @@ contract Strategy is BaseStrategy {
 
     function _calculateAmountToRepay(uint256 amount)
         internal
-        view
         returns (uint256)
     {
         if (amount == 0) {
@@ -631,41 +615,18 @@ contract Strategy is BaseStrategy {
             ,
 
         ) = _getAaveUserAccountData();
-        uint256 amountToWithdrawETH = _toETH(amount, address(want));
-        // calculate the collateral that we are leaving after withdrawing
-        uint256 newCollateral =
-            totalCollateralETH > amountToWithdrawETH
-                ? totalCollateralETH.sub(amountToWithdrawETH)
-                : 0;
-        uint256 ltvAfterWithdrawal =
-            newCollateral > 0
-                ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
-                : type(uint256).max;
-        // check if the new LTV is in UNHEALTHY range
-        // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
-        // this is not true but the effect will be the same
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-        if (ltvAfterWithdrawal <= warningLTV) {
-            // no need of repaying debt because the LTV is ok
-            return 0;
-        } else if (ltvAfterWithdrawal == type(uint256).max) {
-            // we are withdrawing 100% of collateral so we need to repay full debt
-            return _fromETH(totalDebtETH, address(investmentToken));
-        }
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
-        // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
-        // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
-        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
-        // if newTargetDebt is higher, we don't need to repay anything
-        if (newTargetDebt > totalDebtETH) {
-            return 0;
-        }
+        uint256 amountETH = _toETH(amount, address(want));
         return
-            _fromETH(
-                totalDebtETH.sub(newTargetDebt) < minThreshold
-                    ? totalDebtETH
-                    : totalDebtETH.sub(newTargetDebt),
-                address(investmentToken)
+            AaveLenderBorrowerLib.calculateAmountToRepay(
+                amountETH,
+                totalCollateralETH,
+                totalDebtETH,
+                warningLTV,
+                targetLTV,
+                address(investmentToken),
+                minThreshold
             );
     }
 
@@ -850,7 +811,7 @@ contract Strategy is BaseStrategy {
         ) {
             return _amount;
         }
-        AaveLenderBorrowerLib.toETH(_amount, asset);
+        return AaveLenderBorrowerLib.toETH(_amount, asset);
     }
 
     function ethToWant(uint256 _amtInWei)

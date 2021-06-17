@@ -2,7 +2,6 @@
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-import "./SupportStructs.sol";
 import "./aave/DataTypes.sol";
 import "../interfaces/aave/IReserveInterestRateStrategy.sol";
 import "../interfaces/aave/ILendingPool.sol";
@@ -19,6 +18,23 @@ import "../WadRayMath.sol";
 library AaveLenderBorrowerLib {
     using SafeMath for uint256;
     using WadRayMath for uint256;
+    struct CalcMaxDebtLocalVars {
+        uint256 availableLiquidity;
+        uint256 totalStableDebt;
+        uint256 totalVariableDebt;
+        uint256 totalDebt;
+        uint256 utilizationRate;
+        uint256 totalLiquidity;
+        uint256 targetUtilizationRate;
+        uint256 maxProtocolDebt;
+    }
+
+    struct IrsVars {
+        uint256 optimalRate;
+        uint256 baseRate;
+        uint256 slope1;
+        uint256 slope2;
+    }
 
     function protocolDataProvider()
         public
@@ -27,6 +43,10 @@ library AaveLenderBorrowerLib {
     {
         return
             IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+    }
+
+    function MAX_BPS() internal view returns (uint256) {
+        return 10_000;
     }
 
     function lendingPool() public view returns (ILendingPool) {
@@ -80,13 +100,8 @@ library AaveLenderBorrowerLib {
                 .div(priceOracle().getAssetPrice(asset));
     }
 
-    function calcMaxDebt(
-        ILendingPool _lendingPool,
-        IProtocolDataProvider _pdp,
-        address _investmentToken,
-        uint256 _acceptableCostsRay
-    )
-        external
+    function calcMaxDebt(address _investmentToken, uint256 _acceptableCostsRay)
+        public
         view
         returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
     {
@@ -96,9 +111,9 @@ library AaveLenderBorrowerLib {
         // and to repay required debt to keep the rates below acceptable costs
 
         // Hack to avoid the stack too deep compiler error.
-        SupportStructs.CalcMaxDebtLocalVars memory vars;
+        CalcMaxDebtLocalVars memory vars;
         DataTypes.ReserveData memory reserveData =
-            _lendingPool.getReserveData(address(_investmentToken));
+            lendingPool().getReserveData(address(_investmentToken));
         IReserveInterestRateStrategy irs =
             IReserveInterestRateStrategy(
                 reserveData.interestRateStrategyAddress
@@ -124,7 +139,7 @@ library AaveLenderBorrowerLib {
             : vars.totalDebt.rayDiv(vars.totalLiquidity);
 
         // Aave's Interest Rate Strategy Parameters (see docs)
-        SupportStructs.IrsVars memory irsVars;
+        IrsVars memory irsVars;
         irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
         irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
         irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
@@ -172,6 +187,55 @@ library AaveLenderBorrowerLib {
         );
     }
 
+    function calculateAmountToRepay(
+        uint256 amountETH,
+        uint256 totalCollateralETH,
+        uint256 totalDebtETH,
+        uint256 warningLTV,
+        uint256 targetLTV,
+        address investmentToken,
+        uint256 minThreshold
+    ) public view returns (uint256) {
+        if (amountETH == 0) {
+            return 0;
+        }
+        // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
+        uint256 amountToWithdrawETH = amountETH;
+        // calculate the collateral that we are leaving after withdrawing
+        uint256 newCollateral =
+            totalCollateralETH > amountToWithdrawETH
+                ? totalCollateralETH.sub(amountToWithdrawETH)
+                : 0;
+        uint256 ltvAfterWithdrawal =
+            newCollateral > 0
+                ? totalDebtETH.mul(MAX_BPS()).div(newCollateral)
+                : type(uint256).max;
+        // check if the new LTV is in UNHEALTHY range
+        // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
+        // this is not true but the effect will be the same
+        if (ltvAfterWithdrawal <= warningLTV) {
+            // no need of repaying debt because the LTV is ok
+            return 0;
+        } else if (ltvAfterWithdrawal == type(uint256).max) {
+            // we are withdrawing 100% of collateral so we need to repay full debt
+            return fromETH(totalDebtETH, address(investmentToken));
+        }
+        // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
+        // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
+        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS());
+        // if newTargetDebt is higher, we don't need to repay anything
+        if (newTargetDebt > totalDebtETH) {
+            return 0;
+        }
+        return
+            fromETH(
+                totalDebtETH.sub(newTargetDebt) < minThreshold
+                    ? totalDebtETH
+                    : totalDebtETH.sub(newTargetDebt),
+                address(investmentToken)
+            );
+    }
+
     function checkCooldown(
         bool isWantIncentivised,
         bool isInvestmentTokenIncentivised,
@@ -190,5 +254,32 @@ library AaveLenderBorrowerLib {
             block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
             block.timestamp <=
             cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
+    }
+
+    function shouldRebalance(
+        address investmentToken,
+        uint256 acceptableCostsRay,
+        uint256 targetLTV,
+        uint256 warningLTV,
+        uint256 totalCollateralETH,
+        uint256 totalDebtETH
+    ) external view returns (bool) {
+        uint256 currentLTV =
+            totalDebtETH.mul(MAX_BPS()).div(totalCollateralETH);
+
+        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
+            calcMaxDebt(investmentToken, acceptableCostsRay);
+
+        if (
+            (currentLTV < targetLTV &&
+                currentProtocolDebt < maxProtocolDebt &&
+                targetLTV.sub(currentLTV) > 100) || // WE NEED TO TAKE ON MORE DEBT
+            (currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt) // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
+        ) {
+            return true;
+        }
+
+        // no call to super.tendTrigger as it would return false
+        return false;
     }
 }

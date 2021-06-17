@@ -69,7 +69,7 @@ def test_increase_costs(
 
     assert (
         lp.getReserveData(borrow_token).dict()["currentVariableBorrowRate"]
-        < strategy.acceptableCostsRay()
+        < strategy.acceptableCostsRay() # checking that we are repaying more than strictly required (assuming that part of it comes from AaveLending)
     )
 
     strategy.setStrategyParams(

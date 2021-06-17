@@ -246,7 +246,11 @@ contract Strategy is BaseStrategy {
         // currentProtocolDebt => total amount of debt taken by all Aave's borrowers
         // maxProtocolDebt => amount of total debt at which the cost of capital is equal to our acceptable costs
         // if the current protocol debt is higher than the max protocol debt, we will repay debt
-        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
+        (
+            uint256 currentProtocolDebt,
+            uint256 maxProtocolDebt,
+            uint256 targetUtilisationRay
+        ) =
             AaveLenderBorrowerLib.calcMaxDebt(
                 address(investmentToken),
                 acceptableCostsRay
@@ -321,9 +325,20 @@ contract Strategy is BaseStrategy {
             if (maxProtocolDebt == 0) {
                 amountToRepayETH = totalDebtETH;
             } else if (currentProtocolDebt > maxProtocolDebt) {
+                // NOTE: take into account that we are withdrawing from yvVault which might have a GenLender lending to Aave
+                // REPAY = (currentProtocolDebt - maxProtocolDebt) / (1 - TargetUtilisation)
+                // coming from
+                // TargetUtilisation = (totalDebt - REPAY) / (currentLiquidity - REPAY)
+                // currentLiquidity = maxProtocolDebt / TargetUtilisation
+
+                uint256 iterativeRepayAmountETH =
+                    currentProtocolDebt.sub(maxProtocolDebt).mul(1e27).div(
+                        uint256(1e27).sub(targetUtilisationRay)
+                    );
+
                 amountToRepayETH = Math.max(
                     amountToRepayETH,
-                    currentProtocolDebt.sub(maxProtocolDebt)
+                    iterativeRepayAmountETH
                 );
             }
 

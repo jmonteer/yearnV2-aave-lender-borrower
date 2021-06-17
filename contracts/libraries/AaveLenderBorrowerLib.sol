@@ -94,7 +94,11 @@ library AaveLenderBorrowerLib {
     function calcMaxDebt(address _investmentToken, uint256 _acceptableCostsRay)
         public
         view
-        returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
+        returns (
+            uint256 currentProtocolDebt,
+            uint256 maxProtocolDebt,
+            uint256 targetU
+        )
     {
         // This function is used to calculate the maximum amount of debt that the protocol can take
         // to keep the cost of capital lower than the set acceptableCosts
@@ -154,7 +158,7 @@ library AaveLenderBorrowerLib {
             // Special case where protocol is above utilization rate but we want
             // a lower interest rate than (base + slope1)
             if (_acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (toETH(vars.totalDebt, address(_investmentToken)), 0);
+                return (toETH(vars.totalDebt, address(_investmentToken)), 0, 0);
             }
 
             // we solve Aave's Interest Rates equation for utilisation rates above optimal U
@@ -174,7 +178,8 @@ library AaveLenderBorrowerLib {
 
         return (
             toETH(vars.totalDebt, address(_investmentToken)),
-            toETH(vars.maxProtocolDebt, address(_investmentToken))
+            toETH(vars.maxProtocolDebt, address(_investmentToken)),
+            vars.targetUtilizationRate
         );
     }
 
@@ -257,13 +262,13 @@ library AaveLenderBorrowerLib {
     ) external view returns (bool) {
         uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
 
-        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
+        (uint256 currentProtocolDebt, uint256 maxProtocolDebt, ) =
             calcMaxDebt(investmentToken, acceptableCostsRay);
 
         if (
             (currentLTV < targetLTV &&
                 currentProtocolDebt < maxProtocolDebt &&
-                targetLTV.sub(currentLTV) > 100) || // WE NEED TO TAKE ON MORE DEBT
+                targetLTV.sub(currentLTV) > 1000) || // WE NEED TO TAKE ON MORE DEBT (we need a 10p.p (1000bps) difference)
             (currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt) // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
         ) {
             return true;

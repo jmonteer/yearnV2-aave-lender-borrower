@@ -281,7 +281,7 @@ def RELATIVE_APPROX():
 
 @pytest.fixture(scope="session", autouse=True)
 def AaveLibrary(gov, AaveLenderBorrowerLib):
-    AaveLenderBorrowerLib.deploy({"from": gov})
+    yield AaveLenderBorrowerLib.deploy({"from": gov})
 
 
 @pytest.fixture(autouse=False)

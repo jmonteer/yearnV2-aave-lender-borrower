@@ -35,7 +35,7 @@ contract Strategy is BaseStrategy {
 
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
+    uint256 public acceptableCostsRay = WadRayMath.RAY;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
@@ -78,6 +78,8 @@ contract Strategy is BaseStrategy {
     uint256 internal minThreshold;
     uint256 public maxLoss;
     string internal strategyName;
+
+    event RepayDebt(uint256 repayAmount, uint256 previousDebtBalance);
 
     constructor(
         address _vault,
@@ -332,15 +334,16 @@ contract Strategy is BaseStrategy {
                 // currentLiquidity = maxProtocolDebt / TargetUtilisation
 
                 uint256 iterativeRepayAmountETH =
-                    currentProtocolDebt.sub(maxProtocolDebt).mul(1e27).div(
-                        uint256(1e27).sub(targetUtilisationRay)
-                    );
-
+                    currentProtocolDebt
+                        .sub(maxProtocolDebt)
+                        .mul(WadRayMath.RAY)
+                        .div(uint256(WadRayMath.RAY).sub(targetUtilisationRay));
                 amountToRepayETH = Math.max(
                     amountToRepayETH,
                     iterativeRepayAmountETH
                 );
             }
+            emit RepayDebt(amountToRepayETH, totalDebtETH);
 
             uint256 amountToRepayIT =
                 _fromETH(amountToRepayETH, address(investmentToken));
@@ -348,6 +351,8 @@ contract Strategy is BaseStrategy {
             _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         }
     }
+
+    event Number(string a, uint256 b);
 
     function liquidateAllPositions()
         internal
@@ -496,9 +501,10 @@ contract Strategy is BaseStrategy {
 
         // we cannot pay more than loose balance
         uint256 balance = balanceOfInvestmentToken();
+        uint256 debtBalance = balanceOfDebt();
         amount = Math.min(amount, balance);
         // we cannot pay more than we owe
-        amount = Math.min(balanceOfDebt(), amount);
+        amount = Math.min(debtBalance, amount);
 
         _checkAllowance(
             address(_lendingPool()),

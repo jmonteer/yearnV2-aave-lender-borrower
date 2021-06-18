@@ -12,6 +12,7 @@ def test_increase_costs(
     yvault,
     vdToken,
     aToken,
+    AaveLibrary
 ):
     if token.symbol() == "WETH":
         deposit_amount = 500 * (10 ** token.decimals())
@@ -67,10 +68,16 @@ def test_increase_costs(
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)
 
+    d = AaveLibrary.calcMaxDebt(borrow_token, strategy.acceptableCostsRay()).dict()
+    currentDebt = d['currentProtocolDebt']
+    maxDebt = d['maxProtocolDebt']
+
     assert (
         lp.getReserveData(borrow_token).dict()["currentVariableBorrowRate"]
-        < strategy.acceptableCostsRay() # checking that we are repaying more than strictly required (assuming that part of it comes from AaveLending)
+        < strategy.acceptableCostsRay()
     )
+    # checking that we are repaying more than strictly required (assuming that part of it comes from AaveLending)
+    assert tx.events["RepayDebt"]["repayAmount"] > currentDebt-(maxDebt)
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),

@@ -533,6 +533,7 @@ contract Strategy is BaseStrategy {
                 stkAave.claimRewards(address(this), type(uint256).max);
                 stkAave.redeem(address(this), stkAaveBalance);
             }
+
             // sell AAVE for want
             // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
@@ -563,8 +564,7 @@ contract Strategy is BaseStrategy {
 
             // request start of cooldown period
             uint256 cooldownStartTimestamp =
-                IStakedAave(stkAave).stakersCooldowns(address(this));
-
+            IStakedAave(stkAave).stakersCooldowns(address(this));
             if (
                 IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
                 (((cooldownStartTimestamp == 0)) || _checkCooldown())

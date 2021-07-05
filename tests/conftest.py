@@ -76,7 +76,7 @@ def dai():
 
 @pytest.fixture(scope="session")
 def vddai():
-    yield interface.IAToken("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
+    yield interface.IVariableDebtToken("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
 
 
 @pytest.fixture(scope="session")

@@ -1,5 +1,6 @@
 import pytest
-from brownie import config, chain, Wei
+
+from brownie import config, chain, interface, Wei
 from brownie import Contract
 
 
@@ -75,7 +76,7 @@ def dai():
 
 @pytest.fixture(scope="session")
 def vddai():
-    yield Contract("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
+    yield interface.IAToken("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
 
 
 @pytest.fixture(scope="session")

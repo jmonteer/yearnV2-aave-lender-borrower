@@ -68,16 +68,16 @@ contract Strategy is BaseStrategy {
     IERC20 internal investmentToken;
 
     ISwap internal constant router =
-        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        ISwap(0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506);
 
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
     IProtocolDataProvider internal constant protocolDataProvider =
-        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+        IProtocolDataProvider(0x7551b5D2763519d4e37e8B81929D336De671d46d);
 
-    address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
+    address internal constant WETH = 0x7ceb23fd6bc0add59e62ac25578270cff1b9f619;
+    address internal constant AAVE = 0xD6DF932A45C0f255f85145f286eA0b292B21C90B;
 
     uint256 internal minThreshold;
     uint256 public maxLoss;

@@ -197,14 +197,26 @@ contract Strategy is BaseStrategy {
             _profit = balanceOfWant.sub(balanceInit);
         }
 
-        // if the vault is claiming repayment of debt
-        if (_debtOutstanding > 0) {
-            uint256 _amountFreed = 0;
-            (_amountFreed, _loss) = liquidatePosition(_debtOutstanding);
-            _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-            if (_loss > 0) {
-                _profit = 0;
-            }
+        uint256 _amountFreed;
+        (_amountFreed, _loss) = liquidatePosition(
+            _debtOutstanding.add(_profit)
+        );
+        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+
+        if (_loss > _profit) {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 100, _loss 50
+            // loss should be 0, (50-50)
+            // profit should endup in 0
+            _loss = _loss.sub(_profit);
+            _profit = 0;
+        } else {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 140, _loss 10
+            // _profit should be 40, (50 profit - 10 loss)
+            // loss should end up in be 0
+            _profit = _profit.sub(_loss);
+            _loss = 0;
         }
     }
 

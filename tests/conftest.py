@@ -155,12 +155,11 @@ def vault_whale_deposit(vault, wmatic, wmatic_whale):
 
 
 @pytest.fixture(scope="class")
-def strategy(strategist, keeper, vault, Strategy, gov, yvDAI):
+def strategy(strategist, vault, Strategy, gov, yvDAI):
     strategy = strategist.deploy(
         Strategy, vault, yvDAI, True, True, "StrategyLenderWMATICBorrowerDAI"
     )
-    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
-
+    vault.addStrategy(strategy, 200, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
 

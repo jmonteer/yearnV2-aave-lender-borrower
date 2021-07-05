@@ -70,13 +70,10 @@ contract Strategy is BaseStrategy {
     ISwap internal constant router =
         ISwap(0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506);
 
-    IStakedAave internal constant stkAave =
-        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
-
     IProtocolDataProvider internal constant protocolDataProvider =
         IProtocolDataProvider(0x7551b5D2763519d4e37e8B81929D336De671d46d);
 
-    address internal constant WETH = 0x7ceb23fd6bc0add59e62ac25578270cff1b9f619;
+    address internal constant WETH = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
     address internal constant AAVE = 0xD6DF932A45C0f255f85145f286eA0b292B21C90B;
 
     uint256 internal minThreshold;
@@ -479,12 +476,7 @@ contract Strategy is BaseStrategy {
         override
         returns (bool)
     {
-        // we harvest if:
-        // 1. stakedAave is ready to be converted to Aave and sold
-
-        return
-            _checkCooldown() ||
-            super.harvestTrigger(_fromETH(callCost, address(want)));
+        return super.harvestTrigger(_fromETH(callCost, address(want)));
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {
@@ -578,15 +570,6 @@ contract Strategy is BaseStrategy {
 
     function _claimRewards() internal {
         if (isInvestmentTokenIncentivised || isWantIncentivised) {
-            // redeem AAVE from stkAave
-            uint256 stkAaveBalance =
-                IERC20(address(stkAave)).balanceOf(address(this));
-            if (stkAaveBalance > 0 && _checkCooldown()) {
-                // claim AAVE rewards
-                stkAave.claimRewards(address(this), type(uint256).max);
-                stkAave.redeem(address(this), stkAaveBalance);
-            }
-
             // sell AAVE for want
             // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
@@ -614,17 +597,6 @@ contract Strategy is BaseStrategy {
                 type(uint256).max,
                 address(this)
             );
-
-            // request start of cooldown period
-            uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                (cooldownStartTimestamp == 0) ||
-                block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)) {
-                stkAave.cooldown();
-            }
         }
     }
 
@@ -742,21 +714,6 @@ contract Strategy is BaseStrategy {
         ILendingPool lp = _lendingPool();
         _checkAllowance(address(lp), address(want), amount);
         lp.deposit(address(want), amount, address(this), referral);
-    }
-
-    function _checkCooldown() internal view returns (bool) {
-        if (!isWantIncentivised && !isInvestmentTokenIncentivised) {
-            return false;
-        }
-
-        uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-        uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-        uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        return
-            cooldownStartTimestamp != 0 &&
-            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
-            block.timestamp <= cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
     }
 
     function _checkAllowance(

@@ -74,7 +74,6 @@ contract Strategy is BaseStrategy {
         IProtocolDataProvider(0x7551b5D2763519d4e37e8B81929D336De671d46d);
 
     address internal constant WETH = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
-    address internal constant AAVE = 0xD6DF932A45C0f255f85145f286eA0b292B21C90B;
 
     uint256 internal minThreshold;
     uint256 public maxLoss;
@@ -570,13 +569,6 @@ contract Strategy is BaseStrategy {
 
     function _claimRewards() internal {
         if (isInvestmentTokenIncentivised || isWantIncentivised) {
-            // sell AAVE for want
-            // a minimum balance of 0.01 AAVE is required
-            uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
-            if (aaveBalance > 1e15) {
-                _sellAAVEForWant(aaveBalance);
-            }
-
             // claim rewards
             // only add to assets those assets that are incentivised
             address[] memory assets;
@@ -913,21 +905,6 @@ contract Strategy is BaseStrategy {
             _path[1] = address(WETH);
             _path[2] = _token_out;
         }
-    }
-
-    function _sellAAVEForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        _checkAllowance(address(router), address(AAVE), _amount);
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            getTokenOutPath(address(AAVE), address(want)),
-            address(this),
-            now
-        );
     }
 
     function _sellInvestmentForWant(uint256 _amount) internal {

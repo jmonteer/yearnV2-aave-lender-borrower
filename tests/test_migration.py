@@ -2,7 +2,7 @@ import pytest
 from brownie import chain, Wei, reverts
 
 
-def test_migration(
+def x_test_migration(
     vault, strategy, Strategy, gov, wmatic, wmatic_whale, dai, dai_whale, yvDAI, vddai
 ):
     prev_balance = wmatic.balanceOf(wmatic_whale)

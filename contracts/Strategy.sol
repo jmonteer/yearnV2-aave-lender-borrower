@@ -73,6 +73,7 @@ contract Strategy is BaseStrategy {
     IProtocolDataProvider internal constant protocolDataProvider =
         IProtocolDataProvider(0x7551b5D2763519d4e37e8B81929D336De671d46d);
 
+    address internal constant WMATIC = 0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270;
     address internal constant WETH = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
 
     uint256 internal minThreshold;
@@ -894,15 +895,15 @@ contract Strategy is BaseStrategy {
         pure
         returns (address[] memory _path)
     {
-        bool is_weth =
-            _token_in == address(WETH) || _token_out == address(WETH);
-        _path = new address[](is_weth ? 2 : 3);
+        bool is_wmatic =
+            _token_in == address(WMATIC) || _token_out == address(WMATIC);
+        _path = new address[](is_wmatic ? 2 : 3);
         _path[0] = _token_in;
 
-        if (is_weth) {
+        if (is_wmatic) {
             _path[1] = _token_out;
         } else {
-            _path[1] = address(WETH);
+            _path[1] = address(WMATIC);
             _path[2] = _token_out;
         }
     }

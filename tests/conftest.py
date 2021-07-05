@@ -81,7 +81,7 @@ def vddai():
 
 @pytest.fixture(scope="session")
 def amwmatic():
-    yield Contract("0x8df3aad3a84da6b69a4da8aec3ea40d9091b2ac4")
+    yield interface.IAToken("0x8df3aad3a84da6b69a4da8aec3ea40d9091b2ac4")
 
 
 @pytest.fixture(scope="session")
@@ -121,7 +121,7 @@ def vault(pm, gov, rewards, guardian, management, token):
 @pytest.fixture(scope="function")
 def vault_whale_deposit(vault, wmatic, wmatic_whale):
     print("Vault total assets:", vault.totalAssets() / (10 ** wmatic.decimals()))
-    deposit_amount = 10 * 1e8
+    deposit_amount = Wei("10 ether")
     assert vault.totalAssets() == 0
     wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
     vault.deposit(deposit_amount, {"from": wmatic_whale})

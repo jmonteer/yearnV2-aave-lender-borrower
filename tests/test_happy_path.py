@@ -9,7 +9,7 @@ def test_happy_path(vault, strategy, gov, wmatic, wmatic_whale, dai, dai_whale, 
     prev_balance = wmatic.balanceOf(wmatic_whale)
 
     wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
-    vault.deposit(10 * 1e8, {"from": wmatic_whale})
+    vault.deposit(Wei("10 ether"), {"from": wmatic_whale})
 
     print_debug(yvDAI, strategy, lp)
     tx = strategy.harvest({"from": gov})

@@ -2,7 +2,7 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_clone(
+def disabled_test_clone(
     vault,
     strategy,
     strategist,
@@ -94,7 +94,7 @@ def test_clone(
     vault.withdraw({"from": wbtc_whale})
 
 
-def test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
+def disabled_test_clone_of_clone(vault, strategist, rewards, keeper, strategy):
     vault_snx = Contract("0xF29AE508698bDeF169B89834F76704C3B205aedf")
 
     clone_tx = strategy.cloneAaveLenderBorrower(

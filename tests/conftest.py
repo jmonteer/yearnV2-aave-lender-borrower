@@ -109,39 +109,14 @@ def vault(gov):
     yield Contract("0xCcba0B868106d55704cb7ff19782C829dc949feB", owner=gov)
 
 
-# @pytest.fixture(scope="function")
-# def vault_whale_deposit(vault, wmatic, wmatic_whale):
-#     print("Vault total assets:", vault.totalAssets() / (10 ** wmatic.decimals()))
-#     deposit_amount = Wei("1000 ether")
-#     assert vault.totalAssets() == 0
-#     wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
-#     vault.deposit(deposit_amount, {"from": wmatic_whale})
-#     assert wmatic.balanceOf(vault) == deposit_amount
-#     print("Vault total assets:", vault.totalAssets() / (10 ** wmatic.decimals()))
-
-#     yield
-
-#     # after test, withdraw
-#     if vault.balanceOf(wmatic_whale) > 0:
-#         print("Withdrawing 100% from vault")
-#         vault.withdraw({"from": wmatic_whale})
-#         assert vault.totalAssets() == 0
-
-#     print("Vault total assets:", vault.totalAssets() / (10 ** wmatic.decimals()))
+@pytest.fixture(scope="function", autouse=True)
+def initial_vault_balance(token, vault):
+    yield token.balanceOf(vault.address)
 
 
-# @pytest.fixture(scope="function", autouse=True)
-# def vault_whale_withdraw(vault, wmatic, wmatic_whale, dai, yvDAI, dai_whale):
-#     yield
-#     chain.sleep(10 * 3600 + 1)
-#     chain.mine(1)
-#     # more to compensate interests cost until withdrawal
-#     dai.transfer(yvDAI, Wei("500 ether"), {"from": dai_whale})
-#     # after test, withdraw
-#     if vault.balanceOf(wmatic_whale) > 0:
-#         print("Withdrawing 100% from vault")
-#         vault.withdraw({"from": wmatic_whale})
-#         assert vault.totalAssets() == 0
+@pytest.fixture(scope="function", autouse=True)
+def initial_vault_assets(vault):
+    yield vault.totalAssets()
 
 
 @pytest.fixture(scope="class")

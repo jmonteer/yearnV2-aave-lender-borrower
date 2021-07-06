@@ -1,5 +1,5 @@
 import pytest
-from brownie import Wei
+from brownie import Wei, chain
 
 
 def test_revoke_strategy_from_vault(
@@ -10,31 +10,27 @@ def test_revoke_strategy_from_vault(
     gov,
     RELATIVE_APPROX,
     vddai,
-    amwmatic,
-    yvDAI,
-    dai,
-    dai_whale,
+    amwmatic
 ):
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == 0
     amount = Wei("10 ether")
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": wmatic_whale})
     vault.deposit(amount, {"from": wmatic_whale})
+    chain.sleep(1)
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     vault.revokeStrategy(strategy.address, {"from": gov})
-
-    # Send some profit to yvETH to compensate losses, so the strat is able to repay full amount
-    dai.transfer(yvDAI, Wei("1 ether"), {"from": dai_whale})
-
+    chain.sleep(1)
     strategy.harvest()
-    assert vddai.balanceOf(strategy) == 0
-    assert amwmatic.balanceOf(strategy) == 0
-    assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(token.balanceOf(vault), rel=RELATIVE_APPROX) == amount
+    assert pytest.approx(vddai.balanceOf(strategy)/1e18, rel=RELATIVE_APPROX) == 0
+    assert pytest.approx(amwmatic.balanceOf(strategy)/1e18, rel=RELATIVE_APPROX) == 0
 
 
 def test_revoke_strategy_from_strategy(
-    token, vault, strategy, gov, wmatic_whale, RELATIVE_APPROX
+    token, vault, strategy, wmatic_whale, RELATIVE_APPROX
 ):
     amount = Wei("10 ether")
     # Deposit to the vault and harvest

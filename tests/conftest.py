@@ -72,6 +72,7 @@ def wmatic():
 def dai():
     yield Contract("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")
 
+
 @pytest.fixture(scope="session")
 def vddai():
     yield interface.IVariableDebtToken("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
@@ -104,9 +105,29 @@ def dai_amount(user, dai):
     yield dai_amount
 
 
-@pytest.fixture(scope="class")
-def vault(gov):
-    yield Contract("0xCcba0B868106d55704cb7ff19782C829dc949feB", owner=gov)
+@pytest.fixture(scope="function")
+def vault(pm, gov, rewards, guardian, management, token):
+    Vault = pm(config["dependencies"][0]).Vault
+    vault = guardian.deploy(Vault)
+    vault.initialize(token, gov, rewards, "", "", guardian, {"from": gov})
+    vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
+    vault.setManagement(management, {"from": gov})
+    vault.setManagementFee(0, {"from": gov})
+    vault.setPerformanceFee(0, {"from": gov})
+    yield vault
+
+
+@pytest.fixture(scope="function", autouse=True)
+def vault_whale_withdraw(vault, wmatic_whale, dai, yvDAI, dai_whale):
+    yield
+    chain.sleep(10 * 3600 + 1)
+    chain.mine(1)
+    # more to compensate interests cost until withdrawal
+    dai.transfer(yvDAI, Wei("50_000 ether"), {"from": dai_whale})
+    # after test, withdraw
+    if vault.balanceOf(wmatic_whale) > 0:
+        vault.withdraw({"from": wmatic_whale})
+        assert vault.balanceOf(wmatic_whale) == 0
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -119,7 +140,7 @@ def initial_vault_assets(vault):
     yield vault.totalAssets()
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def strategy(strategist, vault, Strategy, gov, yvDAI):
     strategy = strategist.deploy(
         Strategy, vault, yvDAI, True, True, "StrategyLenderWMATICBorrowerDAI"

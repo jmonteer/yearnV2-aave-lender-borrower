@@ -118,19 +118,6 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def vault_whale_withdraw(vault, wmatic_whale, dai, yvDAI, dai_whale):
-    yield
-    chain.sleep(10 * 3600 + 1)
-    chain.mine(1)
-    # more to compensate interests cost until withdrawal
-    dai.transfer(yvDAI, Wei("50_000 ether"), {"from": dai_whale})
-    # after test, withdraw
-    if vault.balanceOf(wmatic_whale) > 0:
-        vault.withdraw({"from": wmatic_whale})
-        assert vault.balanceOf(wmatic_whale) == 0
-
-
-@pytest.fixture(scope="function", autouse=True)
 def initial_vault_balance(token, vault):
     yield token.balanceOf(vault.address)
 
@@ -145,7 +132,7 @@ def strategy(strategist, vault, Strategy, gov, yvDAI):
     strategy = strategist.deploy(
         Strategy, vault, yvDAI, True, True, "StrategyLenderWMATICBorrowerDAI"
     )
-    vault.addStrategy(strategy, 200, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
     yield strategy
 
 

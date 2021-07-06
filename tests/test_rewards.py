@@ -2,21 +2,20 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
-    ic = get_incentives_controller(awbtc)
-    aToken = awbtc
-    vdToken = vdweth
-    stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
+def test_rewards(vault, strategy, gov, wmatic, wmatic_whale, amwmatic, vddai, yvDAI):
+    ic = get_incentives_controller(amwmatic)
+    aToken = amwmatic
+    vdToken = vddai
 
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
+    vault.deposit(Wei("1000 ether"), {"from": wmatic_whale})
 
     assert ic.getRewardsBalance([aToken], strategy) == 0
     assert ic.getRewardsBalance([vdToken], strategy) == 0
     assert ic.getRewardsBalance([aToken, vdToken], strategy) == 0
 
     tx = strategy.harvest({"from": gov})
-    assert yvETH.balanceOf(strategy) > 0
+    assert yvDAI.balanceOf(strategy) > 0
 
     chain.sleep(24 * 3600)  # 24 hours pass
     chain.mine(1)
@@ -30,14 +29,11 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
         == vdTokenRewards + aTokenRewards
     )
 
-    assert stkAave.stakersCooldowns(strategy) == 0
     tx = strategy.harvest({"from": gov})
     aTokenRewards = ic.getRewardsBalance([aToken], strategy)
     vdTokenRewards = ic.getRewardsBalance([vdToken], strategy)
     assert aTokenRewards == 0
     assert vdTokenRewards == 0
-    assert stkAave.balanceOf(strategy) > 0
-    assert stkAave.stakersCooldowns(strategy) != 0
 
     assert strategy.harvestTrigger(0) == False
     chain.sleep(10 * 24 * 3600 + 1)  # a bit over 10 days passes
@@ -49,29 +45,11 @@ def test_rewards(vault, strategy, gov, wbtc, wbtc_whale, awbtc, vdweth, yvETH):
 
     tx = strategy.harvest({"from": gov})
 
-    assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(0) == False
-    assert (
-        tx.events["Swap"][0]["amount0In"]
-        == tx.events["Redeem"][0]["amount"] + tx.events["RewardsClaimed"][0]["amount"]
-    )
     assert tx.events["RewardsClaimed"][0]["amount"] > 0
-    assert tx.events["RewardsClaimed"][1]["amount"] > 0
     assert tx.events["Harvested"]["profit"] > 0
 
-    # let harvest trigger during cooldown period
-    chain.sleep(5 * 24 * 3600)  # 5 days
-    chain.mine(1)
-    # not working because rewards are off at the moment (expected to come back)
-    # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
-    # assert stkAave.getTotalRewardsBalance(strategy) > 0
 
-    tx = strategy.harvest({"from": gov})
-    assert tx.events["Harvested"]
-    # rewards off (expected to come back)
-    # assert len(tx.events["RewardsClaimed"]) == 2
-
-
-def get_incentives_controller(awbtc):
-    ic = Contract(awbtc.getIncentivesController())
+def get_incentives_controller(amwmatic):
+    ic = Contract(amwmatic.getIncentivesController())
     return ic

@@ -36,7 +36,7 @@ contract Strategy is BaseStrategy {
     bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
+    uint256 public acceptableCostsRay = 0.05 * 1e27;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
@@ -53,7 +53,7 @@ contract Strategy is BaseStrategy {
     // NOTE: LTV = Loan-To-Value = debt/collateral
 
     // Target LTV: ratio up to which which we will borrow
-    uint16 public targetLTVMultiplier = 6_000;
+    uint16 public targetLTVMultiplier = 7_000;
 
     // Warning LTV: ratio at which we will repay
     uint16 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV

@@ -58,8 +58,12 @@ def test_direct_transfer_with_actual_profits(
     # sleep for a day
     chain.sleep(24 * 3600)
     chain.mine(1)
+    
+    strategy.harvest()
+    gainsAfterOneDay = vault.strategies(strategy).dict()["totalGain"]
+    assert gainsAfterOneDay > initialProfit
 
-    # Receive a direct transfer
+    # receive a direct transfer
     airdropAmount = Wei("100 ether")
     wmatic.transfer(strategy, airdropAmount, {"from": wmatic_whale})
     
@@ -68,5 +72,5 @@ def test_direct_transfer_with_actual_profits(
     chain.mine(1)
 
     strategy.harvest()
-    assert vault.strategies(strategy).dict()["totalGain"] > initialProfit + airdropAmount
+    assert vault.strategies(strategy).dict()["totalGain"] > gainsAfterOneDay + airdropAmount
 

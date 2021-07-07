@@ -17,18 +17,18 @@ def test_rate_above(
     # This will increase the rate to > 75%
     increase_interest()
 
-    # strategy.setStrategyParams(
-    #     strategy.targetLTVMultiplier(),
-    #     strategy.warningLTVMultiplier(),
-    #     0.75 * 1e27, # https://docs.aave.com/risk/liquidity-risk/borrow-interest-rate#dai-or-tusd
-    #     0,
-    #     strategy.maxTotalBorrowIT(),
-    #     strategy.isWantIncentivised(),
-    #     strategy.isInvestmentTokenIncentivised(),
-    #     strategy.leaveDebtBehind(),
-    #     strategy.maxLoss(),
-    #     {"from": strategy.strategist()},
-    # )
+    strategy.setStrategyParams(
+        strategy.targetLTVMultiplier(),
+        strategy.warningLTVMultiplier(),
+        0.75 * 1e27, # https://docs.aave.com/risk/liquidity-risk/borrow-interest-rate#dai-or-tusd
+        0,
+        strategy.maxTotalBorrowIT(),
+        strategy.isWantIncentivised(),
+        strategy.isInvestmentTokenIncentivised(),
+        strategy.leaveDebtBehind(),
+        strategy.maxLoss(),
+        {"from": strategy.strategist()},
+    )
 
     strategy.harvest({"from": gov})
     assert vddai.balanceOf(strategy) == 0

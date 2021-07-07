@@ -538,6 +538,9 @@ contract Strategy is BaseStrategy {
                 _investmentTokenToYShares(_amountIT),
                 yVault.balanceOf(address(this))
             );
+        if (sharesToWithdraw == 0) {
+            return 0;
+        }
         yVault.withdraw(sharesToWithdraw, address(this), maxLoss);
         return balanceOfInvestmentToken().sub(balancePrior);
     }

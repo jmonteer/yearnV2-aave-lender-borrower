@@ -2,9 +2,9 @@ import pytest
 from brownie import chain, Wei, Contract
 
 
-def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+def test_max_borrow(vault, strategy, gov, wmatic, wmatic_whale, vddai):
+    wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
+    vault.deposit(Wei("10 ether"), {"from": wmatic_whale})
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -19,7 +19,7 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == 0
+    assert vddai.balanceOf(strategy) == 0
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -34,4 +34,4 @@ def test_max_borrow(vault, strategy, gov, wbtc, wbtc_whale, vdweth):
         {"from": strategy.strategist()},
     )
     strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == Wei("2 ether")
+    assert vddai.balanceOf(strategy) == Wei("2 ether")

@@ -36,7 +36,7 @@ contract Strategy is BaseStrategy {
     bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
+    uint256 public acceptableCostsRay = 0.05 * 1e27;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
@@ -53,7 +53,7 @@ contract Strategy is BaseStrategy {
     // NOTE: LTV = Loan-To-Value = debt/collateral
 
     // Target LTV: ratio up to which which we will borrow
-    uint16 public targetLTVMultiplier = 6_000;
+    uint16 public targetLTVMultiplier = 7_000;
 
     // Warning LTV: ratio at which we will repay
     uint16 public warningLTVMultiplier = 8_000; // 80% of liquidation LTV
@@ -68,16 +68,13 @@ contract Strategy is BaseStrategy {
     IERC20 internal investmentToken;
 
     ISwap internal constant router =
-        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-
-    IStakedAave internal constant stkAave =
-        IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
+        ISwap(0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506);
 
     IProtocolDataProvider internal constant protocolDataProvider =
-        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
+        IProtocolDataProvider(0x7551b5D2763519d4e37e8B81929D336De671d46d);
 
-    address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-    address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
+    address internal constant WMATIC = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
+    address internal constant WETH = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619;
 
     uint256 internal minThreshold;
     uint256 public maxLoss;
@@ -260,7 +257,8 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        uint256 balanceInit = balanceOfWant();
+        uint256 totalDebt = vault.strategies(address(this)).totalDebt;
+
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
 
@@ -270,20 +268,32 @@ contract Strategy is BaseStrategy {
         // claim interest from lending
         _takeLendingProfit();
 
-        uint256 balanceOfWant = balanceOfWant();
+        uint256 totalAssetsAfterProfit = estimatedTotalAssets();
 
-        if (balanceOfWant > balanceInit) {
-            _profit = balanceOfWant.sub(balanceInit);
-        }
+        _profit = totalAssetsAfterProfit > totalDebt
+            ? totalAssetsAfterProfit.sub(totalDebt)
+            : 0;
 
-        // if the vault is claiming repayment of debt
-        if (_debtOutstanding > 0) {
-            uint256 _amountFreed = 0;
-            (_amountFreed, _loss) = liquidatePosition(_debtOutstanding);
-            _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-            if (_loss > 0) {
-                _profit = 0;
-            }
+        uint256 _amountFreed;
+        (_amountFreed, _loss) = liquidatePosition(
+            _debtOutstanding.add(_profit)
+        );
+        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
+
+        if (_loss > _profit) {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 100, _loss 50
+            // loss should be 0, (50-50)
+            // profit should endup in 0
+            _loss = _loss.sub(_profit);
+            _profit = 0;
+        } else {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 140, _loss 10
+            // _profit should be 40, (50 profit - 10 loss)
+            // loss should end up in be 0
+            _profit = _profit.sub(_loss);
+            _loss = 0;
         }
     }
 
@@ -479,12 +489,7 @@ contract Strategy is BaseStrategy {
         override
         returns (bool)
     {
-        // we harvest if:
-        // 1. stakedAave is ready to be converted to Aave and sold
-
-        return
-            _checkCooldown() ||
-            super.harvestTrigger(_fromETH(callCost, address(want)));
+        return super.harvestTrigger(_fromETH(callCost, address(want)));
     }
 
     function tendTrigger(uint256 callCost) public view override returns (bool) {
@@ -533,6 +538,9 @@ contract Strategy is BaseStrategy {
                 _investmentTokenToYShares(_amountIT),
                 yVault.balanceOf(address(this))
             );
+        if (sharesToWithdraw == 0) {
+            return 0;
+        }
         yVault.withdraw(sharesToWithdraw, address(this), maxLoss);
         return balanceOfInvestmentToken().sub(balancePrior);
     }
@@ -578,22 +586,6 @@ contract Strategy is BaseStrategy {
 
     function _claimRewards() internal {
         if (isInvestmentTokenIncentivised || isWantIncentivised) {
-            // redeem AAVE from stkAave
-            uint256 stkAaveBalance =
-                IERC20(address(stkAave)).balanceOf(address(this));
-            if (stkAaveBalance > 0 && _checkCooldown()) {
-                // claim AAVE rewards
-                stkAave.claimRewards(address(this), type(uint256).max);
-                stkAave.redeem(address(this), stkAaveBalance);
-            }
-
-            // sell AAVE for want
-            // a minimum balance of 0.01 AAVE is required
-            uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
-            if (aaveBalance > 1e15) {
-                _sellAAVEForWant(aaveBalance);
-            }
-
             // claim rewards
             // only add to assets those assets that are incentivised
             address[] memory assets;
@@ -614,17 +606,6 @@ contract Strategy is BaseStrategy {
                 type(uint256).max,
                 address(this)
             );
-
-            // request start of cooldown period
-            uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-            uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-            uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                (cooldownStartTimestamp == 0) ||
-                block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)) {
-                stkAave.cooldown();
-            }
         }
     }
 
@@ -742,21 +723,6 @@ contract Strategy is BaseStrategy {
         ILendingPool lp = _lendingPool();
         _checkAllowance(address(lp), address(want), amount);
         lp.deposit(address(want), amount, address(this), referral);
-    }
-
-    function _checkCooldown() internal view returns (bool) {
-        if (!isWantIncentivised && !isInvestmentTokenIncentivised) {
-            return false;
-        }
-
-        uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-        uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-        uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-        return
-            cooldownStartTimestamp != 0 &&
-            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
-            block.timestamp <= cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
     }
 
     function _checkAllowance(
@@ -945,32 +911,17 @@ contract Strategy is BaseStrategy {
         pure
         returns (address[] memory _path)
     {
-        bool is_weth =
-            _token_in == address(WETH) || _token_out == address(WETH);
-        _path = new address[](is_weth ? 2 : 3);
+        bool is_wmatic =
+            _token_in == address(WMATIC) || _token_out == address(WMATIC);
+        _path = new address[](is_wmatic ? 2 : 3);
         _path[0] = _token_in;
 
-        if (is_weth) {
+        if (is_wmatic) {
             _path[1] = _token_out;
         } else {
-            _path[1] = address(WETH);
+            _path[1] = address(WMATIC);
             _path[2] = _token_out;
         }
-    }
-
-    function _sellAAVEForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        _checkAllowance(address(router), address(AAVE), _amount);
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            getTokenOutPath(address(AAVE), address(want)),
-            address(this),
-            now
-        );
     }
 
     function _sellInvestmentForWant(uint256 _amount) internal {

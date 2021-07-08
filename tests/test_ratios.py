@@ -1,13 +1,14 @@
+import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
 def test_lev_ratios(
-    vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth, awbtc
+    vault, strategy, gov, wmatic, wmatic_whale, dai, dai_whale, yvDAI, vddai, amwmatic, RELATIVE_APPROX
 ):
     lp = get_lending_pool()
 
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(100 * 1e8, {"from": wbtc_whale})
+    wmatic.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
+    vault.deposit(Wei("10000 ether"), {"from": wmatic_whale})
 
     tx = strategy.harvest({"from": gov})
 
@@ -58,10 +59,10 @@ def test_lev_ratios(
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    weth.transfer(yvETH, Wei("10000 ether"), {"from": weth_whale})
-    previousDebt = vdweth.balanceOf(strategy)
+    dai.transfer(yvDAI, Wei("10000 ether"), {"from": dai_whale})
+    previousDebt = vddai.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
-    assert previousDebt > vdweth.balanceOf(strategy)
+    assert previousDebt > vddai.balanceOf(strategy)
     print_status(lp, strategy)
 
     print_status(lp, strategy)
@@ -79,24 +80,24 @@ def test_lev_ratios(
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    weth.transfer(yvETH, Wei("10000 ether"), {"from": weth_whale})
-    previousDebt = vdweth.balanceOf(strategy)
+    dai.transfer(yvDAI, Wei("10000 ether"), {"from": dai_whale})
+    previousDebt = vddai.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == 0
-    assert wbtc.balanceOf(strategy) == 0
-    assert awbtc.balanceOf(strategy) > 0  # want is deposited as collateral
+    assert pytest.approx(vddai.balanceOf(strategy)/1e18, rel=RELATIVE_APPROX) == 0
+    assert wmatic.balanceOf(strategy) == 0
+    assert amwmatic.balanceOf(strategy) > 0  # want is deposited as collateral
     assert (
-        awbtc.balanceOf(strategy) == strategy.estimatedTotalAssets()
+        amwmatic.balanceOf(strategy) == strategy.estimatedTotalAssets()
     )  # no debt, no investments
 
     print_status(lp, strategy)
-    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
+    dai.transfer(yvDAI, Wei("1 ether"), {"from": dai_whale})
 
-    vault.withdraw({"from": wbtc_whale})
+    vault.withdraw({"from": wmatic_whale})
 
 
 def get_lending_pool():
-    pd_provider = Contract("0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d")
+    pd_provider = Contract("0x7551b5D2763519d4e37e8B81929D336De671d46d")
     a_provider = Contract(pd_provider.ADDRESSES_PROVIDER())
     lp = Contract(a_provider.getLendingPool())
     return lp

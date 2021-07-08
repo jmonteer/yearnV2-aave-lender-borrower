@@ -1,5 +1,6 @@
 import pytest
-from brownie import config, chain, Wei
+
+from brownie import config, chain, interface, Wei
 from brownie import Contract
 
 
@@ -12,7 +13,8 @@ def clean():
 
 @pytest.fixture(scope="session")
 def gov(accounts):
-    yield accounts.at("0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52", force=True)
+    vault = Contract("0xCcba0B868106d55704cb7ff19782C829dc949feB")
+    yield accounts.at(vault.governance(), force=True)
 
 
 @pytest.fixture(scope="session")
@@ -50,63 +52,60 @@ def amount(accounts, token, user):
     amount = 10_000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0xd551234ae421e3bcba99a0da6d736074f22192ff", force=True)
+    reserve = accounts.at("0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270", force=True)
     token.transfer(user, amount, {"from": reserve})
     yield amount
 
 
 @pytest.fixture(scope="session")
-def yvETH():
-    vault = Contract("0xa9fE4601811213c340e850ea305481afF02f5b28")
-    vault.setDepositLimit(
-        2 ** 256 - 1, {"from": vault.governance()}
-    )  # testing during war room
+def yvDAI():
+    vault = Contract("0x9cfeb5e00a38ed1c9950dbadc0821ce4cb648a90")
     yield vault
 
 
 @pytest.fixture(scope="session")
-def weth():
-    yield Contract("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
+def wmatic():
+    yield Contract("0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
 
 
 @pytest.fixture(scope="session")
-def vdweth():
-    yield Contract("0xF63B34710400CAd3e044cFfDcAb00a0f32E33eCf")
+def dai():
+    yield Contract("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")
 
 
 @pytest.fixture(scope="session")
-def wbtc():
-    yield Contract("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599")
+def vddai():
+    yield interface.IVariableDebtToken("0x75c4d1fb84429023170086f06e682dcbbf537b7d")
 
 
 @pytest.fixture(scope="session")
-def awbtc():
-    yield Contract("0x9ff58f4fFB29fA2266Ab25e75e2A8b3503311656")
+def amwmatic():
+    yield interface.IAToken("0x8df3aad3a84da6b69a4da8aec3ea40d9091b2ac4")
 
 
 @pytest.fixture(scope="session")
-def wbtc_whale(accounts):
-    yield accounts.at("0x40ec5B33f54e0E8A33A975908C5BA1c14e5BbbDf", force=True)
+def wmatic_whale(accounts):
+    yield accounts.at("0x2bb25175d9b0f8965780209eb558cc3b56ca6d32", force=True)
 
 
 @pytest.fixture(scope="session")
-def weth_whale(accounts):
-    yield accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
+def dai_whale(accounts):
+    yield accounts.at("0x27f8d03b3a2196956ed754badc28d73be8830a6e", force=True)
 
 
 @pytest.fixture(scope="session")
-def token(wbtc):
-    yield wbtc
+def token(wmatic):
+    yield wmatic
 
 
 @pytest.fixture
-def weth_amout(user, weth):
-    weth_amout = 10 ** weth.decimals()
-    user.transfer(weth, weth_amout)
-    yield weth_amout
+def dai_amount(user, dai):
+    dai_amount = 10 ** dai.decimals()
+    user.transfer(dai, dai_amount)
+    yield dai_amount
 
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="function")
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
@@ -118,48 +117,22 @@ def vault(pm, gov, rewards, guardian, management, token):
     yield vault
 
 
-@pytest.fixture(scope="function")
-def vault_whale_deposit(vault, wbtc, wbtc_whale):
-    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
-    deposit_amount = 10 * 1e8
-    assert vault.totalAssets() == 0
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(deposit_amount, {"from": wbtc_whale})
-    assert wbtc.balanceOf(vault) == deposit_amount
-    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
-
-    yield
-
-    # after test, withdraw
-    if vault.balanceOf(wbtc_whale) > 0:
-        print("Withdrawing 100% from vault")
-        vault.withdraw({"from": wbtc_whale})
-        assert vault.totalAssets() == 0
-
-    print("Vault total assets:", vault.totalAssets() / (10 ** wbtc.decimals()))
+@pytest.fixture(scope="function", autouse=True)
+def initial_vault_balance(token, vault):
+    yield token.balanceOf(vault.address)
 
 
 @pytest.fixture(scope="function", autouse=True)
-def vault_whale_withdraw(vault, wbtc, wbtc_whale, weth, yvETH, weth_whale):
-    yield
-    chain.sleep(10 * 3600 + 1)
-    chain.mine(1)
-    # more to compensate interests cost until withdrawal
-    weth.transfer(yvETH, Wei("500 ether"), {"from": weth_whale})
-    # after test, withdraw
-    if vault.balanceOf(wbtc_whale) > 0:
-        print("Withdrawing 100% from vault")
-        vault.withdraw({"from": wbtc_whale})
-        assert vault.totalAssets() == 0
+def initial_vault_assets(vault):
+    yield vault.totalAssets()
 
 
-@pytest.fixture(scope="class")
-def strategy(strategist, keeper, vault, Strategy, gov, yvETH):
+@pytest.fixture(scope="function")
+def strategy(strategist, vault, Strategy, gov, yvDAI):
     strategy = strategist.deploy(
-        Strategy, vault, yvETH, True, True, "StrategyLenderWBTCBorrowerWETH"
+        Strategy, vault, yvDAI, True, True, "StrategyLenderWMATICBorrowerDAI"
     )
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 0, {"from": gov})
-
     yield strategy
 
 

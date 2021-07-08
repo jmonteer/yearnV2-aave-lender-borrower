@@ -6,25 +6,24 @@ def test_revoke_with_profit(
     token,
     vault,
     strategy,
-    wbtc_whale,
+    wmatic_whale,
     gov,
     RELATIVE_APPROX,
-    vdweth,
-    awbtc,
-    weth,
-    weth_whale,
-    yvETH,
+    vddai,
+    amwmatic,
+    dai,
+    dai_whale,
+    yvDAI,
 ):
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(20 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": wmatic_whale})
+    vault.deposit(Wei("30_000 ether"), {"from": wmatic_whale})
     strategy.harvest()
 
-    # Send some profit to yvETH
-    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
+    # Send some profit to yvDAI
+    dai.transfer(yvDAI, Wei("1_000 ether"), {"from": dai_whale})
     vault.revokeStrategy(strategy, {"from": gov})
     strategy.harvest()
-
-    assert vdweth.balanceOf(strategy) == 0
-    assert awbtc.balanceOf(strategy) == 0
+    assert pytest.approx(vddai.balanceOf(strategy)/1e18, rel=RELATIVE_APPROX) == 0
+    assert pytest.approx(amwmatic.balanceOf(strategy)/1e18, rel=RELATIVE_APPROX) == 0
     assert vault.strategies(strategy).dict()["totalGain"] > 0
     assert vault.strategies(strategy).dict()["totalDebt"] == 0

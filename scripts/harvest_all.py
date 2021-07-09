@@ -10,5 +10,5 @@ def main():
     curveam3CRV = Contract("0xab8f0128ecbF90aA73A0C5a79E549A194f4C2354")
 
     curveam3CRV.harvest({"from": keeper})
-    ssc_dai_am3crv.harvest({"from: keeper"})
+    ssc_dai_am3crv.harvest({"from:": keeper})
     strategyLenderWethBorrowerDAI.harvest({"from": keeper})

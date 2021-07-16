@@ -64,7 +64,7 @@ def strategy(strategist, yvDAI, Strategy, gov, yvSUSD):
         6_000,  # targetLTVMultiplier
         8_000,  # warningLTVMultiplier)
         0.05 * 1e27,  # acceptableCostsRay
-        0,  # _aaveReferral,
+        7,  # yearn aave referral code,
         2 ** 256 - 1,  #  _maxTotalBorrowIT,
         True,  # _isWantIncentivised -> DAI deposits with stkAAVE rewards
         False,  # _isInvestmentTokenIncentivised,

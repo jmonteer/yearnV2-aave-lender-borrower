@@ -20,3 +20,13 @@ def test_direct_transfer_increments_profits(vault, strategy, token, token_whale,
     token.transfer(strategy, amount, {"from": token_whale})
     strategy.harvest({"from": gov})
     assert vault.strategies(strategy).dict()["totalGain"] == initialProfit + amount
+
+
+def test_deposit_should_not_increment_profits(vault, strategy, token, token_whale, gov):
+    initialProfit = vault.strategies(strategy).dict()["totalGain"]
+    assert initialProfit == 0
+
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(Wei("100 ether"), {"from": token_whale})
+    strategy.harvest({"from": gov})
+    assert vault.strategies(strategy).dict()["totalGain"] == initialProfit

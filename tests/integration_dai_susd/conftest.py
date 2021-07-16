@@ -48,6 +48,12 @@ def susd():
 def susd_whale():
     yield Contract("0xA5407eAE9Ba41422680e2e00537571bcC53efBfD")
 
+@pytest.fixture(scope="function", autouse=True)
+def vault_whale_withdraw(
+    vault, token_whale, borrow_token, yvault, borrow_whale, vdToken, strategy
+):
+    pass
+
 
 @pytest.fixture(scope="class")
 def strategy(strategist, yvDAI, Strategy, gov, yvSUSD):

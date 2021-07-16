@@ -50,9 +50,25 @@ def susd_whale():
 
 
 @pytest.fixture(scope="class")
-def strategy(strategist, vault, Strategy, gov, yvDAI):
+def strategy(strategist, yvDAI, Strategy, gov, yvSUSD):
     strategy = strategist.deploy(
-        Strategy, yvDAI, yvSUSD, True, True, "StrategyLenderDAIBorrowerSUSD"
+        Strategy, yvDAI, yvSUSD, "StrategyLenderDAIBorrowerSUSD"
     )
-    vault.addStrategy(strategy, 200, 0, 2 ** 256 - 1, 1_000, {"from": gov})
+    strategy.setStrategyParams(
+        6_000,  # targetLTVMultiplier
+        8_000,  # warningLTVMultiplier)
+        0.05 * 1e27,  # acceptableCostsRay
+        0,  # _aaveReferral,
+        2 ** 256 - 1,  #  _maxTotalBorrowIT,
+        True,  # _isWantIncentivised -> DAI deposits with stkAAVE rewards
+        False,  # _isInvestmentTokenIncentivised,
+        False,  # _leaveDebtBehind,
+        1,  # _maxLoss
+    )
+
+    # reset debt ratio of all strategies
+    for s in range(3):
+        yvDAI.updateStrategyDebtRatio(yvDAI.withdrawalQueue(s), 0, {"from": gov})
+
+    yvDAI.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy

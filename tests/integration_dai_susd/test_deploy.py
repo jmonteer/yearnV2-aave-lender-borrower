@@ -24,7 +24,7 @@ def test_deploy(
     chain.mine(1)
 
     # Send some profit to yvault
-    susd.transfer(yvSUSD, Wei("20_000 ether"), {"from": susd_whale})
+    susd.transfer(yvSUSD, yvDAI.strategies(strategy).dict()["totalDebt"] * 1.1, {"from": susd_whale})
 
     yvDAI.revokeStrategy(strategy, {"from": gov})
     tx = strategy.harvest({"from": gov})
@@ -36,5 +36,5 @@ def test_deploy(
     assert data["totalLoss"] == 0
     assert data["totalDebt"] == 0
     assert data["debtRatio"] == 0
-    assert yvSUSD.balanceOf(strategy) == 0
+    assert pytest.approx(yvSUSD.balanceOf(strategy) / 1e18, rel=RELATIVE_APPROX) == 0
     assert pytest.approx(vdsusd.balanceOf(strategy) / 1e18, rel=RELATIVE_APPROX) == 0

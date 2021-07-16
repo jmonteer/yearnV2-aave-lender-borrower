@@ -64,6 +64,7 @@ jobs:
       run: |
         brownie test ./tests/test_clone.py -s
         brownie test ./tests/test_debt_ratio.py -s
+        brownie test ./tests/test_direct_transfer.py -s
         brownie test ./tests/test_happy_path.py -s
         brownie test ./tests/test_huge_debt_increase.py -s
         brownie test ./tests/test_increase_costs.py -s

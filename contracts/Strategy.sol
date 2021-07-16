@@ -365,8 +365,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    event Number(string a, uint256 b);
-
     function liquidateAllPositions()
         internal
         override

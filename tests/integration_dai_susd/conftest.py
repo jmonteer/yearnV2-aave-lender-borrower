@@ -1,6 +1,5 @@
 import pytest
-from brownie import config, chain, Wei
-from brownie import Contract
+from brownie import Contract, ZERO_ADDRESS
 
 
 @pytest.fixture(scope="session")
@@ -48,6 +47,7 @@ def susd():
 def susd_whale():
     yield Contract("0xA5407eAE9Ba41422680e2e00537571bcC53efBfD")
 
+
 @pytest.fixture(scope="function", autouse=True)
 def vault_whale_withdraw(
     vault, token_whale, borrow_token, yvault, borrow_whale, vdToken, strategy
@@ -73,8 +73,11 @@ def strategy(strategist, yvDAI, Strategy, gov, yvSUSD):
     )
 
     # reset debt ratio of all strategies
-    for s in range(3):
-        yvDAI.updateStrategyDebtRatio(yvDAI.withdrawalQueue(s), 0, {"from": gov})
+    for i in range(20):
+        queued_strat = yvDAI.withdrawalQueue(i)
+        if queued_strat == ZERO_ADDRESS:
+            break
+        yvDAI.updateStrategyDebtRatio(queued_strat, 0, {"from": gov})
 
     yvDAI.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy

@@ -52,6 +52,7 @@ def susd_whale():
 def vault_whale_withdraw(
     vault, token_whale, borrow_token, yvault, borrow_whale, vdToken, strategy
 ):
+    # Override this method to replace the base conftest logic
     pass
 
 

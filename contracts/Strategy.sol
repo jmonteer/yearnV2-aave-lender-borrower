@@ -67,7 +67,7 @@ contract Strategy is BaseStrategy {
     IERC20 internal investmentToken;
 
     ISwap internal constant router =
-        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
 
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);

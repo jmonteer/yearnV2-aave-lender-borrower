@@ -39,7 +39,7 @@ contract AaveLenderBorrowerCloner {
     }
 
     function name() external pure returns (string memory) {
-        return "Yearn-AaveLenderBorrowerCloner@0.4.2-1";
+        return "Yearn-AaveLenderBorrowerCloner@0.4.3";
     }
 
     function cloneAaveLenderBorrower(

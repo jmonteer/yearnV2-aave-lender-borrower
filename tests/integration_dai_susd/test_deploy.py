@@ -17,6 +17,12 @@ def test_deploy(
     dai.approve(yvDAI, 2 ** 256 - 1, {"from": dai_whale})
     yvDAI.deposit(Wei("100_000 ether"), {"from": dai_whale})
 
+    # TODO: can we remove this sushi woes?
+    susdEth = Contract("0xF1F85b2C54a2bD284B1cf4141D64fD171Bd85539")
+    susdEth.sync({"from": gov})
+    daiEth = Contract("0xC3D03e4F041Fd4cD388c549Ee2A29a9E5075882f")
+    daiEth.sync({"from": gov})
+
     strategy.harvest({"from": gov})
 
     # After first investment sleep for a month

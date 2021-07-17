@@ -33,7 +33,7 @@ def test_rewards(
     tx = strategy.harvest({"from": gov})
     assert yvault.balanceOf(strategy) > 0
 
-    chain.sleep(24 * 3600)  # 24 hours pass
+    chain.sleep(2 * 24 * 3600)  # 48 hours later
     chain.mine(1)
 
     aTokenRewards = ic.getRewardsBalance([aToken], strategy)
@@ -89,7 +89,7 @@ def test_rewards(
     chain.mine(1)
     # not working because rewards are off at the moment (expected to come back)
     # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
-    # assert stkAave.getTotalRewardsBalance(strategy) > 0
+    assert stkAave.getTotalRewardsBalance(strategy) > 0
 
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]

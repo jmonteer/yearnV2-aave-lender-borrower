@@ -29,8 +29,8 @@ def test_revoke_strategy_from_vault(
     )
 
     strategy.harvest({"from": gov})
-    assert vdToken.balanceOf(strategy) == 0
-    assert aToken.balanceOf(strategy) == 0
+    assert pytest.approx(vdToken.balanceOf(strategy) / (10 ** vdToken.decimals()), rel=RELATIVE_APPROX) == 0
+    assert pytest.approx(aToken.balanceOf(strategy) / (10 ** aToken.decimals()), rel=RELATIVE_APPROX) == 0
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 

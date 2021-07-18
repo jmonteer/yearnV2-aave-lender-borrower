@@ -181,8 +181,7 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        uint256 totalDebt = vault.strategies(address(this)).totalDebt;
-
+        uint256 balanceInit = balanceOfWant();
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
 
@@ -192,11 +191,11 @@ contract Strategy is BaseStrategy {
         // claim interest from lending
         _takeLendingProfit();
 
-        uint256 totalAssetsAfterProfit = estimatedTotalAssets();
+        uint256 balanceOfWant = balanceOfWant();
 
-        _profit = totalAssetsAfterProfit > totalDebt
-            ? totalAssetsAfterProfit.sub(totalDebt)
-            : 0;
+        if (balanceOfWant > balanceInit) {
+            _profit = balanceOfWant.sub(balanceInit);
+        }
 
         uint256 _amountFreed;
         (_amountFreed, _loss) = liquidatePosition(

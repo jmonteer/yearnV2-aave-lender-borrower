@@ -22,6 +22,59 @@ def test_direct_transfer_increments_profits(vault, strategy, token, token_whale,
     assert vault.strategies(strategy).dict()["totalGain"] == initialProfit + amount
 
 
+def test_borrow_token_transfer_sends_to_yvault(
+    vault, strategy, token, token_whale, borrow_token, borrow_whale, gov
+):
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(Wei("10 ether"), {"from": token_whale})
+    strategy.harvest({"from": gov})
+
+    amount = 1_000 * (10 ** borrow_token.decimals())
+    borrow_token.transfer(strategy, amount, {"from": borrow_whale})
+
+    strategy.harvest({"from": gov})
+    assert borrow_token.balanceOf(strategy) == 0
+
+
+def test_borrow_token_transfer_increments_yshares(
+    vault, yvault, strategy, token, token_whale, borrow_token, borrow_whale, gov
+):
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(Wei("10 ether"), {"from": token_whale})
+
+    strategy.harvest({"from": gov})
+    initialBalance = yvault.balanceOf(strategy)
+
+    amount = 1_000 * (10 ** borrow_token.decimals())
+    borrow_token.transfer(strategy, amount, {"from": borrow_whale})
+
+    strategy.harvest({"from": gov})
+    assert yvault.balanceOf(strategy) > initialBalance
+
+
+def test_borrow_token_transfer_increments_profits(
+    vault, strategy, token, token_whale, borrow_token, borrow_whale, gov, AaveLibrary
+):
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(Wei("10 ether"), {"from": token_whale})
+
+    strategy.harvest({"from": gov})
+
+    amount = 1_000 * (10 ** borrow_token.decimals())
+    borrow_token.transfer(strategy, amount, {"from": borrow_whale})
+    strategy.harvest({"from": gov})
+
+    transferInEth = AaveLibrary.toETH(amount, borrow_token)
+    transferInWant = AaveLibrary.fromETH(transferInEth, token)
+
+    chain.sleep(60)  # wait a minute!
+    chain.mine(1)
+
+    strategy.harvest({"from": gov})
+    # account for fees and slippage - our profit should be at least 95% of the transfer in want
+    assert vault.strategies(strategy).dict()["totalGain"] > transferInWant * 0.95
+
+
 def test_deposit_should_not_increment_profits(vault, strategy, token, token_whale, gov):
     initialProfit = vault.strategies(strategy).dict()["totalGain"]
     assert initialProfit == 0

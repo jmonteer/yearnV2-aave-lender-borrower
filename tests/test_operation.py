@@ -66,7 +66,7 @@ def test_profitable_harvest(
 
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
-    #assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # increase rewards, lending interest and borrowing interests
     chain.sleep(50 * 24 * 3600)
@@ -88,16 +88,33 @@ def test_profitable_harvest(
     # Harvest 2: Realize profit
 
     tx = strategy.harvest({"from": strategist})
-    print(f"InitialBalanceInPrepareReturn: {tx.events['InitialBalanceInPrepareReturn']['amount']/1e18:_}")
+    print(
+        f"InitialBalanceInPrepareReturn: {tx.events['InitialBalanceInPrepareReturn']['amount']/1e18:_}"
+    )
 
-    diff = tx.events['BalanceAfterClaimRewards']['amount'] - tx.events['InitialBalanceInPrepareReturn']['amount']
-    print(f"BalanceAfterClaimRewards: {tx.events['BalanceAfterClaimRewards']['amount']/1e18:_} diff: {diff/1e18:_}")
+    diff = (
+        tx.events["BalanceAfterClaimRewards"]["amount"]
+        - tx.events["InitialBalanceInPrepareReturn"]["amount"]
+    )
+    print(
+        f"BalanceAfterClaimRewards: {tx.events['BalanceAfterClaimRewards']['amount']/1e18:_} diff: {diff/1e18:_}"
+    )
 
-    diff = tx.events['BalanceAfterVaultProfit']['amount'] - tx.events['BalanceAfterClaimRewards']['amount']
-    print(f"BalanceAfterVaultProfit: {tx.events['BalanceAfterVaultProfit']['amount']/1e18:_} diff: {diff/1e18:_}")
+    diff = (
+        tx.events["BalanceAfterVaultProfit"]["amount"]
+        - tx.events["BalanceAfterClaimRewards"]["amount"]
+    )
+    print(
+        f"BalanceAfterVaultProfit: {tx.events['BalanceAfterVaultProfit']['amount']/1e18:_} diff: {diff/1e18:_}"
+    )
 
-    diff = tx.events['BalanceAfterTakeLendingProfit']['amount'] - tx.events['BalanceAfterVaultProfit']['amount']
-    print(f"BalanceAfterTakeLendingProfit: {tx.events['BalanceAfterTakeLendingProfit']['amount']/1e18:_} diff: {diff/1e18:_}")
+    diff = (
+        tx.events["BalanceAfterTakeLendingProfit"]["amount"]
+        - tx.events["BalanceAfterVaultProfit"]["amount"]
+    )
+    print(
+        f"BalanceAfterTakeLendingProfit: {tx.events['BalanceAfterTakeLendingProfit']['amount']/1e18:_} diff: {diff/1e18:_}"
+    )
     assert False
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
@@ -122,7 +139,7 @@ def test_change_debt(
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
     strategy.harvest({"from": gov})
-    #assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # In order to pass this tests, you will need to implement prepareReturn.
     # TODO: uncomment the following lines.

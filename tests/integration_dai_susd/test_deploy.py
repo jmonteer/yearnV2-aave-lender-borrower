@@ -30,13 +30,17 @@ def test_deploy(
     chain.mine(1)
 
     # Send some profit to yvault
-    susd.transfer(yvSUSD, yvDAI.strategies(strategy).dict()["totalDebt"] * 1.1, {"from": susd_whale})
+    susd.transfer(
+        yvSUSD,
+        yvDAI.strategies(strategy).dict()["totalDebt"] * 1.1,
+        {"from": susd_whale},
+    )
 
     yvDAI.revokeStrategy(strategy, {"from": gov})
     tx = strategy.harvest({"from": gov})
 
-    assert tx.events['Harvested']['profit'] > 0
-    assert tx.events['Harvested']['debtPayment'] >= Wei("10 ether")
+    assert tx.events["Harvested"]["profit"] > 0
+    assert tx.events["Harvested"]["debtPayment"] >= Wei("10 ether")
 
     data = yvDAI.strategies(strategy).dict()
     assert data["totalLoss"] == 0

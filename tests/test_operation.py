@@ -121,7 +121,9 @@ def test_profitable_harvest(
     )
 
     print(f"\tTLP_DepositedWant: {tx.events['TLP_DepositedWant']['amount']/1e18:_}")
-    print(f"\tTLP_CurrentWantInAave: {tx.events['TLP_CurrentWantInAave']['amount']/1e18:_}")
+    print(
+        f"\tTLP_CurrentWantInAave: {tx.events['TLP_CurrentWantInAave']['amount']/1e18:_}"
+    )
     print(f"\tTLP_ToWithdraw: {tx.events['TLP_ToWithdraw']['amount']/1e18:_}")
     print(f"\tTLP_BalanceBeforeW: {tx.events['TLP_BalanceBeforeW']['amount']/1e18:_}")
     print(f"\tTLP_BalanceAfterW: {tx.events['TLP_BalanceAfterW']['amount']/1e18:_}")

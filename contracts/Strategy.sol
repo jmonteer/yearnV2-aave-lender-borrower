@@ -594,13 +594,24 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    event TLP_DepositedWant(string step, uint256 amount);
+    event TLP_CurrentWantInAave(string step, uint256 amount);
+    event TLP_ToWithdraw(string step, uint256 amount);
+    event TLP_BalanceBeforeW(string step, uint256 amount);
+    event TLP_BalanceAfterW(string step, uint256 amount);
+
     function _takeLendingProfit() internal {
         uint256 depositedWant = vault.strategies(address(this)).totalDebt;
+        emit TLP_DepositedWant("0", depositedWant);
         uint256 currentWantInAave = balanceOfAToken();
+        emit TLP_CurrentWantInAave("1", currentWantInAave);
 
         if (currentWantInAave > depositedWant) {
             uint256 toWithdraw = currentWantInAave.sub(depositedWant);
+            emit TLP_ToWithdraw("2", toWithdraw);
+            emit TLP_BalanceBeforeW("3", balanceOfWant());
             _withdrawWantFromAave(toWithdraw);
+            emit TLP_BalanceAfterW("4", balanceOfWant());
         }
     }
 

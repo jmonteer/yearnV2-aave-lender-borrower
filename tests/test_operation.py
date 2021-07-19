@@ -1,4 +1,4 @@
-import brownie
+from brownie import *
 import pytest
 
 
@@ -79,6 +79,7 @@ def test_profitable_harvest(
         f"Balance of atoken before second harvest: {aToken.balanceOf(strategy)/1e18:_}"
     )
     strategy.harvest({"from": strategist})  # to claim and start cooldown
+    print(f"Second harvest result {history[-1].events['Harvested']}")
 
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)

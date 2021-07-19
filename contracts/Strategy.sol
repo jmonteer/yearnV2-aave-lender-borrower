@@ -313,17 +313,6 @@ contract Strategy is BaseStrategy {
                     address(this)
                 );
             }
-
-            uint256 balanceIT = balanceOfInvestmentToken();
-            if (balanceIT > 0) {
-                _checkAllowance(
-                    address(yVault),
-                    address(investmentToken),
-                    balanceIT
-                );
-
-                yVault.deposit();
-            }
         } else if (
             currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
         ) {
@@ -362,6 +351,17 @@ contract Strategy is BaseStrategy {
                 _fromETH(amountToRepayETH, address(investmentToken));
             uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
             _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
+        }
+
+        uint256 balanceIT = balanceOfInvestmentToken();
+        if (balanceIT > 0) {
+            _checkAllowance(
+            address(yVault),
+            address(investmentToken),
+            balanceIT
+            );
+
+           yVault.deposit();
         }
     }
 

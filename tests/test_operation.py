@@ -87,6 +87,10 @@ def test_profitable_harvest(
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
 
+    print(f"Before Harvest")
+    print(f"estimatedTotalAssets: {strategy.estimatedTotalAssets()/1e18:_}")
+    print(f"totalDebt: {vault.strategies(strategy).dict()['totalDebt']/1e18:_}")
+
     tx = strategy.harvest({"from": strategist})
     print(
         f"InitialBalanceInPrepareReturn: {tx.events['InitialBalanceInPrepareReturn']['amount']/1e18:_}"
@@ -115,6 +119,10 @@ def test_profitable_harvest(
     print(
         f"BalanceAfterTakeLendingProfit: {tx.events['BalanceAfterTakeLendingProfit']['amount']/1e18:_} diff: {diff/1e18:_}"
     )
+
+    print(f"After Harvest")
+    print(f"estimatedTotalAssets: {strategy.estimatedTotalAssets()/1e18:_}")
+    print(f"totalDebt: {vault.strategies(strategy).dict()['totalDebt']/1e18:_}")
     assert False
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)

@@ -77,9 +77,7 @@ def test_profitable_harvest(
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
 
-    borrow_token.transfer(
-        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
-    )
+    borrow_token.transfer(yvault, yvault.totalAssets() * 1.05, {"from": borrow_whale})
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
     strategy.harvest({"from": strategist})

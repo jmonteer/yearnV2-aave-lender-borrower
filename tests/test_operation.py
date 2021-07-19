@@ -1,4 +1,4 @@
-import brownie
+from brownie import *
 import pytest
 
 
@@ -57,25 +57,36 @@ def test_profitable_harvest(
     borrow_token,
     borrow_whale,
     yvault,
+    aToken,
 ):
     # Deposit to the vault
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
     vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     amount = 10 * (10 ** token.decimals())
     assert token.balanceOf(vault.address) == amount
+    assert aToken.balanceOf(strategy) == 0
 
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
+    print(f"Balance of atoken after first harvest: {aToken.balanceOf(strategy)/1e18:_}")
     # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # increase rewards, lending interest and borrowing interests
     chain.sleep(50 * 24 * 3600)
     chain.mine(1)
 
+    print(
+        f"Balance of atoken before second harvest: {aToken.balanceOf(strategy)/1e18:_}"
+    )
     strategy.harvest({"from": strategist})  # to claim and start cooldown
+    print(f"Second harvest result {history[-1].events['Harvested']}")
 
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
+
+    print(
+        f"Balance of atoken after second harvest: {aToken.balanceOf(strategy)/1e18:_}"
+    )
 
     prev_yvault_pps = yvault.pricePerShare()
     borrow_token.transfer(
@@ -90,7 +101,9 @@ def test_profitable_harvest(
     print(f"Before Harvest")
     print(f"estimatedTotalAssets: {strategy.estimatedTotalAssets()/1e18:_}")
     print(f"totalDebt: {vault.strategies(strategy).dict()['totalDebt']/1e18:_}")
-
+    print(
+        f"Balance of atoken before third harvest: {aToken.balanceOf(strategy)/1e18:_}"
+    )
     tx = strategy.harvest({"from": strategist})
     print(
         f"InitialBalanceInPrepareReturn: {tx.events['InitialBalanceInPrepareReturn']['amount']/1e18:_}"
@@ -131,9 +144,10 @@ def test_profitable_harvest(
     print(f"After Harvest")
     print(f"estimatedTotalAssets: {strategy.estimatedTotalAssets()/1e18:_}")
     print(f"totalDebt: {vault.strategies(strategy).dict()['totalDebt']/1e18:_}")
-    assert False
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
+    print(f"Balance of atoken after third harvest: {aToken.balanceOf(strategy)/1e18:_}")
+    assert False
     profit = token.balanceOf(vault.address)  # Profits go to vault
 
     assert vault.totalAssets() > amount

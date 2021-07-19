@@ -172,6 +172,11 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
+    event InitialBalanceInPrepareReturn(string step, uint256 amount);
+    event BalanceAfterClaimRewards(string step, uint256 amount);
+    event BalanceAfterVaultProfit(string step, uint256 amount);
+    event BalanceAfterTakeLendingProfit(string step, uint256 amount);
+
     function prepareReturn(uint256 _debtOutstanding)
         internal
         override
@@ -182,15 +187,19 @@ contract Strategy is BaseStrategy {
         )
     {
         uint256 totalDebt = vault.strategies(address(this)).totalDebt;
+        emit InitialBalanceInPrepareReturn("0", balanceOfWant());
 
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
+        emit BalanceAfterClaimRewards("1", balanceOfWant());
 
         // claim rewards from yVault
         _takeVaultProfit();
+        emit BalanceAfterVaultProfit("2", balanceOfWant());
 
         // claim interest from lending
         _takeLendingProfit();
+        emit BalanceAfterTakeLendingProfit("3", balanceOfWant());
 
         uint256 totalAssetsAfterProfit = estimatedTotalAssets();
 

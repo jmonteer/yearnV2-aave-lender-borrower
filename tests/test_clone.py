@@ -69,7 +69,7 @@ def test_clone(
     chain.mine(1)
 
     # Send some profit to yvETH
-    snx.transfer(vault_snx, 200 * (10 ** snx.decimals()), {"from": snx_whale})
+    snx.transfer(vault_snx, 1_000 * (10 ** snx.decimals()), {"from": snx_whale})
 
     # TODO: check profits before and after
     strategy.harvest({"from": gov})

@@ -172,6 +172,11 @@ contract Strategy is BaseStrategy {
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
+    event InitialBalanceInPrepareReturn(string step, uint256 amount);
+    event BalanceAfterClaimRewards(string step, uint256 amount);
+    event BalanceAfterVaultProfit(string step, uint256 amount);
+    event BalanceAfterTakeLendingProfit(string step, uint256 amount);
+
     function prepareReturn(uint256 _debtOutstanding)
         internal
         override
@@ -182,14 +187,18 @@ contract Strategy is BaseStrategy {
         )
     {
         uint256 balanceInit = balanceOfWant();
+        emit InitialBalanceInPrepareReturn("0", balanceOfWant());
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
+        emit BalanceAfterClaimRewards("1", balanceOfWant());
 
         // claim rewards from yVault
         _takeVaultProfit();
+        emit BalanceAfterVaultProfit("2", balanceOfWant());
 
         // claim interest from lending
         _takeLendingProfit();
+        emit BalanceAfterTakeLendingProfit("3", balanceOfWant());
 
         uint256 balanceOfWant = balanceOfWant();
 
@@ -584,13 +593,20 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    event LPDebug(uint256 step, uint256 value);
+
     function _takeLendingProfit() internal {
         uint256 depositedWant = vault.strategies(address(this)).totalDebt;
+        emit LPDebug(0, depositedWant);
         uint256 currentWantInAave = balanceOfAToken();
+        emit LPDebug(1, currentWantInAave);
 
         if (currentWantInAave > depositedWant) {
             uint256 toWithdraw = currentWantInAave.sub(depositedWant);
+            emit LPDebug(2, currentWantInAave);
+            emit LPDebug(3, balanceOfWant());
             _withdrawWantFromAave(toWithdraw);
+            emit LPDebug(4, balanceOfWant());
         }
     }
 

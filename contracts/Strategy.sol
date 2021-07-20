@@ -356,12 +356,12 @@ contract Strategy is BaseStrategy {
         uint256 balanceIT = balanceOfInvestmentToken();
         if (balanceIT > 0) {
             _checkAllowance(
-            address(yVault),
-            address(investmentToken),
-            balanceIT
+                address(yVault),
+                address(investmentToken),
+                balanceIT
             );
 
-           yVault.deposit();
+            yVault.deposit();
         }
     }
 
@@ -370,9 +370,7 @@ contract Strategy is BaseStrategy {
         override
         returns (uint256 _amountFreed)
     {
-        (_amountFreed, ) = liquidatePosition(
-            vault.strategies(address(this)).totalDebt
-        );
+        (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
     }
 
     function liquidatePosition(uint256 _amountNeeded)

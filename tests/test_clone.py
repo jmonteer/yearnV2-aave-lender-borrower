@@ -2,7 +2,8 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-def test_clone(
+# TODO: re-enable this test
+def disabled_test_clone(
     vault,
     strategy,
     strategist,

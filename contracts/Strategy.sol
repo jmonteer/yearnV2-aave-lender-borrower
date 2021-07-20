@@ -189,9 +189,6 @@ contract Strategy is BaseStrategy {
         // claim rewards from yVault
         _takeVaultProfit();
 
-        // claim interest from lending
-        _takeLendingProfit();
-
         uint256 totalAssetsAfterProfit = estimatedTotalAssets();
 
         _profit = totalAssetsAfterProfit > totalDebt
@@ -578,16 +575,6 @@ contract Strategy is BaseStrategy {
             ) {
                 stkAave.cooldown();
             }
-        }
-    }
-
-    function _takeLendingProfit() internal {
-        uint256 depositedWant = vault.strategies(address(this)).totalDebt;
-        uint256 currentWantInAave = balanceOfAToken();
-
-        if (currentWantInAave > depositedWant) {
-            uint256 toWithdraw = currentWantInAave.sub(depositedWant);
-            _withdrawWantFromAave(toWithdraw);
         }
     }
 

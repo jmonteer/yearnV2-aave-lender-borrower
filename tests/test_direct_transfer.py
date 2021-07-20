@@ -1,4 +1,4 @@
-from brownie import Wei, chain
+from brownie import chain
 
 
 def test_direct_transfer_increments_estimated_total_assets(
@@ -7,7 +7,7 @@ def test_direct_transfer_increments_estimated_total_assets(
     token_whale,
 ):
     initial = strategy.estimatedTotalAssets()
-    amount = Wei("10 ether")
+    amount = 10 * (10 ** token.decimals())
     token.transfer(strategy, amount, {"from": token_whale})
     assert strategy.estimatedTotalAssets() == initial + amount
 
@@ -16,7 +16,7 @@ def test_direct_transfer_increments_profits(vault, strategy, token, token_whale,
     initialProfit = vault.strategies(strategy).dict()["totalGain"]
     assert initialProfit == 0
 
-    amount = Wei("10 ether")
+    amount = 10 * (10 ** token.decimals())
     token.transfer(strategy, amount, {"from": token_whale})
     strategy.harvest({"from": gov})
     assert vault.strategies(strategy).dict()["totalGain"] == initialProfit + amount
@@ -26,7 +26,7 @@ def test_borrow_token_transfer_sends_to_yvault(
     vault, strategy, token, token_whale, borrow_token, borrow_whale, gov
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(Wei("10 ether"), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     strategy.harvest({"from": gov})
 
     amount = 1_000 * (10 ** borrow_token.decimals())
@@ -40,7 +40,7 @@ def test_borrow_token_transfer_increments_yshares(
     vault, yvault, strategy, token, token_whale, borrow_token, borrow_whale, gov
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(Wei("10 ether"), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
 
     strategy.harvest({"from": gov})
     initialBalance = yvault.balanceOf(strategy)
@@ -56,7 +56,7 @@ def test_borrow_token_transfer_increments_profits(
     vault, strategy, token, token_whale, borrow_token, borrow_whale, gov, AaveLibrary
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(Wei("10 ether"), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
 
     strategy.harvest({"from": gov})
 
@@ -80,7 +80,7 @@ def test_deposit_should_not_increment_profits(vault, strategy, token, token_whal
     assert initialProfit == 0
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(Wei("100 ether"), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     strategy.harvest({"from": gov})
     assert vault.strategies(strategy).dict()["totalGain"] == initialProfit
 
@@ -92,7 +92,7 @@ def test_direct_transfer_with_actual_profits(
     assert initialProfit == 0
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(Wei("10 ether"), {"from": token_whale})
+    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
     strategy.harvest({"from": gov})
 
     # send some profit to yvault
@@ -105,7 +105,7 @@ def test_direct_transfer_with_actual_profits(
     chain.mine(1)
 
     # receive a direct transfer
-    airdropAmount = Wei("10 ether")
+    airdropAmount = 10 * (10 ** token.decimals())
     token.transfer(strategy, airdropAmount, {"from": token_whale})
 
     # sleep for another day

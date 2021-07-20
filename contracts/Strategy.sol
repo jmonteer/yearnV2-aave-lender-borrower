@@ -511,11 +511,9 @@ contract Strategy is BaseStrategy {
         }
 
         // we cannot pay more than loose balance
-        uint256 balance = balanceOfInvestmentToken();
-        uint256 debtBalance = balanceOfDebt();
-        amount = Math.min(amount, balance);
+        amount = Math.min(amount, balanceOfInvestmentToken());
         // we cannot pay more than we owe
-        amount = Math.min(debtBalance, amount);
+        amount = Math.min(amount, balanceOfDebt());
 
         _checkAllowance(
             address(_lendingPool()),

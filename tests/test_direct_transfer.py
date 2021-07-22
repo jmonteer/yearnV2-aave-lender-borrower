@@ -2,9 +2,7 @@ from brownie import chain
 
 
 def test_direct_transfer_increments_estimated_total_assets(
-    strategy,
-    token,
-    token_whale,
+    strategy, token, token_whale,
 ):
     initial = strategy.estimatedTotalAssets()
     amount = 10 * (10 ** token.decimals())

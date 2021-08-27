@@ -66,8 +66,7 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 internal investmentToken;
 
-    ISwap internal constant router =
-        ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+    ISwap public router;
 
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
@@ -142,6 +141,12 @@ contract Strategy is BaseStrategy {
         maxLoss = _maxLoss;
     }
 
+    // Where to route token swaps
+    // Access control is stricter in this method as it will be sent funds
+    function setSwapRouter(ISwap _router) external onlyGovernance {
+        router = _router;
+    }
+
     function _initializeThis(address _yVault, string memory _strategyName)
         internal
     {
@@ -157,6 +162,9 @@ contract Strategy is BaseStrategy {
 
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
+
+        // Set default router to SushiSwap
+        router = ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
 
         strategyName = _strategyName;
     }

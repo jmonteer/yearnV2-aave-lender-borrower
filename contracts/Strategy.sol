@@ -174,6 +174,9 @@ contract Strategy is BaseStrategy {
         address _yVault,
         string memory _strategyName
     ) public {
+        // Make sure we only initialize one time
+        require(address(yVault) == address(0)); // dev: strategy already initialized
+
         address sender = msg.sender;
         _initialize(_vault, sender, sender, sender);
         _initializeThis(_yVault, _strategyName);

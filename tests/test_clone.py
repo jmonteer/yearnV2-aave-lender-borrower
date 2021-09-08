@@ -2,8 +2,7 @@ import pytest
 from brownie import chain, Wei, reverts, Contract
 
 
-# TODO: re-enable this test
-def disabled_test_clone(
+def test_clone(
     vault,
     strategy,
     strategist,
@@ -92,6 +91,9 @@ def disabled_test_clone(
     # so we send profits
     snx.transfer(vault_snx, Wei("30_000 ether"), {"from": snx_whale})
     vault.withdraw({"from": token_whale})
+
+    sushiswap = Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
+    assert strategy.router() == sushiswap
 
 
 def test_clone_of_clone(vault, strategist, rewards, keeper, strategy, cloner):

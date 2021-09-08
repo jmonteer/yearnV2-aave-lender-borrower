@@ -74,6 +74,14 @@ contract Strategy is BaseStrategy {
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
 
+    // SushiSwap router
+    ISwap internal constant sushiswapRouter =
+        ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+
+    // Uniswap router
+    ISwap internal constant uniswapRouter =
+        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
     uint256 internal minThreshold;
     uint256 public maxLoss;
     string internal strategyName;
@@ -143,10 +151,13 @@ contract Strategy is BaseStrategy {
         maxLoss = _maxLoss;
     }
 
-    // Where to route token swaps
-    // Access control is stricter in this method as it will be sent funds
-    function setSwapRouter(ISwap _router) external onlyGovernance {
-        router = _router;
+    // Allow switching between Uniswap and SushiSwap
+    function switchDex(bool isUniswap) external onlyVaultManagers {
+        if (isUniswap) {
+            router = uniswapRouter;
+        } else {
+            router = sushiswapRouter;
+        }
     }
 
     function _initializeThis(address _yVault, string memory _strategyName)
@@ -169,7 +180,7 @@ contract Strategy is BaseStrategy {
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
 
         // Set default router to SushiSwap
-        router = ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+        router = sushiswapRouter;
 
         strategyName = _strategyName;
     }

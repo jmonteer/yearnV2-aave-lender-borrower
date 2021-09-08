@@ -150,6 +150,9 @@ contract Strategy is BaseStrategy {
     function _initializeThis(address _yVault, string memory _strategyName)
         internal
     {
+        // Make sure we only initialize one time
+        require(address(yVault) == address(0)); // dev: strategy already initialized
+
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
         (address _aToken, , ) =

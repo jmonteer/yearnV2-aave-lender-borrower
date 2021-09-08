@@ -49,6 +49,10 @@ def test_clone(
         {"from": strategy.strategist()},
     )
 
+    uniswap = Contract("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+    cloned_strategy.switchDex(True, {"from": gov})
+    assert cloned_strategy.router() == uniswap
+
     # should fail due to already initialized
     with reverts():
         strategy.initialize(vault, vault_snx, "NameRevert", {"from": gov})
@@ -91,9 +95,6 @@ def test_clone(
     # so we send profits
     snx.transfer(vault_snx, Wei("30_000 ether"), {"from": snx_whale})
     vault.withdraw({"from": token_whale})
-
-    sushiswap = Contract("0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F")
-    assert strategy.router() == sushiswap
 
 
 def test_clone_of_clone(vault, strategist, rewards, keeper, strategy, cloner):

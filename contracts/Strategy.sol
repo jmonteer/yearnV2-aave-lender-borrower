@@ -138,6 +138,8 @@ contract Strategy is BaseStrategy {
         isWantIncentivised = _isWantIncentivised;
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
         leaveDebtBehind = _leaveDebtBehind;
+
+        require(_maxLoss <= 10_000);
         maxLoss = _maxLoss;
     }
 

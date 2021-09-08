@@ -452,7 +452,7 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        // nothing to do since debt cannot be migrated
+        revert(); // dev: debt cannot be migrated
     }
 
     function harvestTrigger(uint256 callCost)

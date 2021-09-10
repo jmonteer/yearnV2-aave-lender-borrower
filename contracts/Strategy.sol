@@ -493,6 +493,11 @@ contract Strategy is BaseStrategy {
 
         ) = _getAaveUserAccountData();
 
+        // Nothing to rebalance if we do not have collateral locked
+        if (totalCollateralETH == 0) {
+            return false;
+        }
+
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
 

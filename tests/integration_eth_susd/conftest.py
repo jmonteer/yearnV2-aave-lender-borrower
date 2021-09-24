@@ -81,7 +81,7 @@ def strategy(strategist, yvWETH, Strategy, gov, yvSUSD):
         True,  # _isInvestmentTokenIncentivised,
         False,  # _leaveDebtBehind,
         1,  # _maxLoss
-        60 * 1e9, # _maxGasPriceToTend
+        60 * 1e9,  # _maxGasPriceToTend
     )
 
     # reset debt ratio of all strategies

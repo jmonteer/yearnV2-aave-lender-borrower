@@ -280,7 +280,7 @@ library AaveLenderBorrowerLib {
                 targetLTV.sub(currentLTV) > 1000) || // WE NEED TO TAKE ON MORE DEBT (we need a 10p.p (1000bps) difference)
             (currentProtocolDebt > maxProtocolDebt) // UNHEALTHY BORROWING COSTS
         ) {
-            return baseFeeProvider.basefee_global() < maxGasPriceToTend;
+            return baseFeeProvider.basefee_global() <= maxGasPriceToTend;
         }
 
         // no call to super.tendTrigger as it would return false

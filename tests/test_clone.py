@@ -46,6 +46,7 @@ def test_clone(
         False,  # snx is not incentivised
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
 

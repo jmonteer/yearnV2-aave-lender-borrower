@@ -84,6 +84,7 @@ contract Strategy is BaseStrategy {
 
     uint256 internal minThreshold;
     uint256 public maxLoss;
+    uint256 public maxGasPriceToTend;
     string internal strategyName;
 
     event RepayDebt(uint256 repayAmount, uint256 previousDebtBalance);
@@ -132,7 +133,8 @@ contract Strategy is BaseStrategy {
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised,
         bool _leaveDebtBehind,
-        uint256 _maxLoss
+        uint256 _maxLoss,
+        uint256 _maxGasPriceToTend
     ) external onlyEmergencyAuthorized {
         require(
             _warningLTVMultiplier <= MAX_MULTIPLIER &&
@@ -146,6 +148,7 @@ contract Strategy is BaseStrategy {
         isWantIncentivised = _isWantIncentivised;
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
         leaveDebtBehind = _leaveDebtBehind;
+        maxGasPriceToTend = _maxGasPriceToTend;
 
         require(_maxLoss <= 10_000);
         maxLoss = _maxLoss;
@@ -508,7 +511,8 @@ contract Strategy is BaseStrategy {
                 targetLTV,
                 warningLTV,
                 totalCollateralETH,
-                totalDebtETH
+                totalDebtETH,
+                maxGasPriceToTend
             );
     }
 

@@ -36,6 +36,7 @@ def test_lev_ratios(
             strategy.isInvestmentTokenIncentivised(),
             strategy.leaveDebtBehind(),
             strategy.maxLoss(),
+            strategy.maxGasPriceToTend(),
             {"from": strategy.strategist()},
         )
     # should revert if targetRatio > warningRatio
@@ -50,6 +51,7 @@ def test_lev_ratios(
             strategy.isInvestmentTokenIncentivised(),
             strategy.leaveDebtBehind(),
             strategy.maxLoss(),
+            strategy.maxGasPriceToTend(),
             {"from": strategy.strategist()},
         )
 
@@ -64,6 +66,7 @@ def test_lev_ratios(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
@@ -87,6 +90,7 @@ def test_lev_ratios(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)

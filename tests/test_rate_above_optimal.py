@@ -33,6 +33,7 @@ def test_rate_above_optimal(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
 
@@ -59,6 +60,7 @@ def test_rate_above_optimal(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
 

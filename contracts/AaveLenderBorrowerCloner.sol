@@ -30,7 +30,8 @@ contract AaveLenderBorrowerCloner {
             _isWantIncentivised,
             _isInvestmentTokenIncentivised,
             false, // leave debt behind (default: false)
-            1 // maxLoss (default: 1)
+            1, // maxLoss (default: 1)
+            60 * 1e9 // max base fee to perform non-emergency tends (default: 60 gwei)
         );
 
         Strategy(_original).setRewards(msg.sender);
@@ -80,7 +81,8 @@ contract AaveLenderBorrowerCloner {
             _isWantIncentivised,
             _isInvestmentTokenIncentivised,
             false, // leave debt behind (default: false)
-            1 // maxLoss (default: 1)
+            1, // maxLoss (default: 1)
+            60 * 1e9 // max base fee to perform non-emergency tends (default: 60 gwei)
         );
 
         Strategy(newStrategy).setKeeper(_keeper);

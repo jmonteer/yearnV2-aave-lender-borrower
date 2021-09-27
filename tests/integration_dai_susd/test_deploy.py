@@ -32,7 +32,7 @@ def test_deploy(
     # Send some profit to yvault
     susd.transfer(
         yvSUSD,
-        yvDAI.strategies(strategy).dict()["totalDebt"] * 1.1,
+        yvDAI.strategies(strategy).dict()["totalDebt"] * 0.05,
         {"from": susd_whale},
     )
 

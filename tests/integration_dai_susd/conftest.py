@@ -62,16 +62,16 @@ def strategy(strategist, yvDAI, Strategy, gov, yvSUSD):
         Strategy, yvDAI, yvSUSD, "StrategyLenderDAIBorrowerSUSD"
     )
     strategy.setStrategyParams(
-        6_000,  # targetLTVMultiplier
+        7_000,  # targetLTVMultiplier
         8_000,  # warningLTVMultiplier)
-        0.05 * 1e27,  # acceptableCostsRay
+        0.06 * 1e27,  # acceptableCostsRay
         7,  # yearn aave referral code,
         2 ** 256 - 1,  #  _maxTotalBorrowIT,
         True,  # _isWantIncentivised -> DAI deposits with stkAAVE rewards
-        False,  # _isInvestmentTokenIncentivised,
-        False,  # _leaveDebtBehind,
+        True,  # _isInvestmentTokenIncentivised -> Borrow sUSD with stkAAVE rewards
+        True,  # _leaveDebtBehind,
         1,  # _maxLoss
-        60 * 1e9,  # _maxGasPriceToTend
+        50 * 1e9,  # _maxGasPriceToTend
     )
 
     # reset debt ratio of all strategies

@@ -24,7 +24,7 @@ def test_rewards(
     stkAave = Contract("0x4da27a545c0c5B758a6BA100e3a049001de870f5")
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
     assert ic.getRewardsBalance([aToken], strategy) == 0
     assert ic.getRewardsBalance([vdToken], strategy) == 0
@@ -74,7 +74,7 @@ def test_rewards(
 
     # Send some profit to yvault
     borrow_token.transfer(
-        yvault, 200_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        yvault, 20_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
     )
     assert stkAave.balanceOf(strategy) >= accumulatedRewards
     assert strategy.harvestTrigger(Wei("1 ether")) == False

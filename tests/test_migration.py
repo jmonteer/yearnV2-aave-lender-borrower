@@ -12,20 +12,21 @@ def test_migration(
     borrow_token,
     borrow_whale,
     yvault,
-    vdToken,
     token_incentivised,
     borrow_incentivised,
     cloner,
     strategist,
 ):
-    prev_balance = token.balanceOf(token_whale)
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
+    chain.sleep(1)
     strategy.harvest({"from": gov})
     borrow_token.transfer(
         yvault, 20000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
     )
+
+    chain.sleep(1)
     strategy.harvest({"from": gov})
     chain.sleep(60 * 60 * 24 * 2)
     chain.mine(1)
@@ -46,9 +47,12 @@ def test_migration(
 
     old_debt_ratio = vault.strategies(strategy).dict()["debtRatio"]
     vault.revokeStrategy(strategy, {"from": gov})
+
+    chain.sleep(1)
     strategy.harvest({"from": gov})
     vault.migrateStrategy(strategy, strategy2, {"from": gov})
     vault.updateStrategyDebtRatio(strategy2, old_debt_ratio, {"from": gov})
+    chain.sleep(1)
     strategy2.harvest({"from": gov})
 
     assert vault.strategies(strategy).dict()["totalDebt"] == 0

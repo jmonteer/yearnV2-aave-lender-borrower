@@ -9,19 +9,10 @@ def get_lp():
 
 
 def test_rate_above_optimal(
-    vault,
-    strategy,
-    gov,
-    token,
-    token_whale,
-    vdToken,
-    borrow_whale,
-    yvault,
-    borrow_token,
-    aToken,
+    vault, strategy, gov, token, token_whale, vdToken, borrow_whale, borrow_token
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(20 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),

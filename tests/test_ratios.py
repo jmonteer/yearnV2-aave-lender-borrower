@@ -16,12 +16,12 @@ def test_lev_ratios(
     lp = get_lending_pool()
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(100 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
-    tx = strategy.harvest({"from": gov})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
 
     targetLTV = strategy.targetLTVMultiplier()
-    warningLTV = strategy.warningLTVMultiplier()
 
     print_status(lp, strategy)
     # should revert with ratios > 90%
@@ -98,7 +98,7 @@ def test_lev_ratios(
         yvault, 10000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
     )
     previousDebt = vdToken.balanceOf(strategy)
-    tx = strategy.harvest({"from": gov})
+    strategy.harvest({"from": gov})
     print_status(lp, strategy)
 
     assert vdToken.balanceOf(strategy) == 0

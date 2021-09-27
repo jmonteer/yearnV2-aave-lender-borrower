@@ -1,5 +1,5 @@
 import pytest
-from brownie import Wei
+from brownie import chain
 
 
 def test_revoke_with_profit(
@@ -16,7 +16,9 @@ def test_revoke_with_profit(
     yvault,
 ):
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(20 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+
+    chain.sleep(1)
     strategy.harvest({"from": gov})
 
     # Send some profit to yvault
@@ -26,7 +28,7 @@ def test_revoke_with_profit(
     vault.revokeStrategy(strategy, {"from": gov})
     strategy.harvest({"from": gov})
 
-    assert vdToken.balanceOf(strategy) <= 1
-    assert aToken.balanceOf(strategy) <= 1
+    assert pytest.approx(vdToken.balanceOf(strategy) / 1e18, RELATIVE_APPROX) == 0
+    assert pytest.approx(aToken.balanceOf(strategy) / 1e18, RELATIVE_APPROX) == 0
     assert vault.strategies(strategy).dict()["totalGain"] > 0
     assert vault.strategies(strategy).dict()["totalDebt"] <= 1

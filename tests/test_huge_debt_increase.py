@@ -2,20 +2,20 @@ import pytest
 from brownie import chain, Contract
 
 
-def test_huge_debt(
-    vault, strategy, gov, token, token_whale, borrow_token, borrow_whale, yvault
-):
+def test_huge_debt(vault, strategy, gov, token, token_whale):
     prev_balance = token.balanceOf(token_whale)
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+
+    chain.sleep(1)
     strategy.harvest({"from": gov})
     lp = get_lending_pool()
 
     prev_debt = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
     print(f"T=0 totalDebtETH: {prev_debt}")
 
-    # After first investment sleep for aproximately a year
-    chain.sleep(60 * 60 * 24 * 365)
+    # After first investment sleep for aproximately a month
+    chain.sleep(60 * 60 * 24 * 30)
     chain.mine(1)
     new_debt = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
     print(f"T=365 totalDebtETH: {new_debt}")
@@ -29,8 +29,9 @@ def test_huge_debt(
         vault.balanceOf(token_whale), token_whale, 10_000, {"from": token_whale}
     )
 
+    # we are currently in a profitable scenario so there is no loss
     print(f"diff {prev_balance-token.balanceOf(token_whale)}")
-    assert prev_balance - token.balanceOf(token_whale) > 0
+    assert token.balanceOf(token_whale) - prev_balance > 0
 
 
 def get_lending_pool():

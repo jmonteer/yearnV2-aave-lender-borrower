@@ -29,6 +29,7 @@ def test_increase_costs(
     # whale has deposited 10btc in fixture
     lp = get_lending_pool()
 
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     chain.sleep(6 * 3600)
     chain.mine(1)
@@ -57,6 +58,7 @@ def test_increase_costs(
         borrow_token.symbol() == "USDT"
         or borrow_token.symbol() == "USDC"
         or borrow_token.symbol() == "DAI"
+        or borrow_token.symbol() == "sUSD"
     ):
         borrow_token.transfer(
             yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
@@ -66,6 +68,8 @@ def test_increase_costs(
             yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
         )
     previousDebt = vdToken.balanceOf(strategy)
+
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)
 
@@ -99,6 +103,7 @@ def test_increase_costs(
         borrow_token.symbol() == "USDT"
         or borrow_token.symbol() == "USDC"
         or borrow_token.symbol() == "DAI"
+        or borrow_token.symbol() == "sUSD"
     ):
         borrow_token.transfer(
             yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
@@ -108,6 +113,8 @@ def test_increase_costs(
             yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
         )
     previousDebt = vdToken.balanceOf(strategy)
+
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     assert previousDebt > vdToken.balanceOf(strategy)
     assert vdToken.balanceOf(strategy) == 0

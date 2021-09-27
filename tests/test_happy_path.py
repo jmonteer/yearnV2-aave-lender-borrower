@@ -11,9 +11,11 @@ def test_happy_path(
     prev_balance = token.balanceOf(token_whale)
 
     token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
-    vault.deposit(10 * (10 ** token.decimals()), {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
     print_debug(yvault, strategy, lp)
+
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     assert yvault.balanceOf(strategy) > 0
     print_debug(yvault, strategy, lp)

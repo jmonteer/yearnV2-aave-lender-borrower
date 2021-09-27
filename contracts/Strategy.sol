@@ -186,6 +186,9 @@ contract Strategy is BaseStrategy {
         router = sushiswapRouter;
 
         strategyName = _strategyName;
+
+        // Set health check to health.ychad.eth
+        healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
     }
 
     function initialize(

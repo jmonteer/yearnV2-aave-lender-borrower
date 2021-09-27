@@ -1,5 +1,4 @@
-import pytest
-from brownie import chain, Wei, reverts, Contract
+from brownie import chain, Wei, Contract
 
 
 def test_rewards(
@@ -30,7 +29,8 @@ def test_rewards(
     assert ic.getRewardsBalance([vdToken], strategy) == 0
     assert ic.getRewardsBalance([aToken, vdToken], strategy) == 0
 
-    tx = strategy.harvest({"from": gov})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
     assert yvault.balanceOf(strategy) > 0
 
     chain.sleep(2 * 24 * 3600)  # 48 hours later
@@ -48,7 +48,9 @@ def test_rewards(
     )
 
     assert stkAave.stakersCooldowns(strategy) == 0
-    tx = strategy.harvest({"from": gov})
+
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
     aTokenRewards = ic.getRewardsBalance([aToken], strategy)
     vdTokenRewards = ic.getRewardsBalance([vdToken], strategy)
     assert aTokenRewards == 0
@@ -70,6 +72,7 @@ def test_rewards(
     if borrow_incentivised or token_incentivised:
         assert accumulatedRewards > 0
 
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
 
     # Send some profit to yvault
@@ -93,6 +96,7 @@ def test_rewards(
     # https://app.aave.com/governance/15-QmfYfZhLe5LYpCocm1JxdJ7sajV1QTjrK5UCF1TGe5HTfy
     assert stkAave.getTotalRewardsBalance(strategy) > 0
 
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     assert tx.events["Harvested"]
     # rewards off (expected to come back)

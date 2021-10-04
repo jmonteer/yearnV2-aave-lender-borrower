@@ -62,8 +62,10 @@ jobs:
         ETHERSCAN_TOKEN: MW5CQA6QK5YMJXP2WP3RA36HM5A7RA1IHA
         WEB3_INFURA_PROJECT_ID: b7821200399e4be2b4e5dbdf06fbe85b
       run: |
+        brownie test ./tests/test_access_control.py -s
         brownie test ./tests/test_clone.py -s
         brownie test ./tests/test_debt_ratio.py -s
+        brownie test ./tests/test_direct_transfer.py -s
         brownie test ./tests/test_happy_path.py -s
         brownie test ./tests/test_huge_debt_increase.py -s
         brownie test ./tests/test_increase_costs.py -s
@@ -75,5 +77,4 @@ jobs:
         brownie test ./tests/test_revoke_with_profit.py -s
         brownie test ./tests/test_revoke.py -s
         brownie test ./tests/test_rewards.py -s
-        brownie test ./tests/test_shutdown.py -s
-        brownie test ./tests/linkUsdc/test_happy_path.py -s
+        brownie test ./tests/integration_dai_susd/test_deploy.py -s

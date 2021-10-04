@@ -1,110 +1,111 @@
-import brownie
-from brownie import Contract, Wei
+from brownie import chain, reverts
 import pytest
 
 
-def test_operation(
-    accounts, token, vault, wbtc_whale, strategy, strategist, RELATIVE_APPROX
-):
-    user_balance_before = token.balanceOf(wbtc_whale)
+def test_operation(token, vault, token_whale, strategy, strategist, RELATIVE_APPROX):
+    user_balance_before = token.balanceOf(token_whale)
 
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
-    amount = 10 * 1e8
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 500_000 * (10 ** token.decimals())
     # Deposit to the vault
     assert token.balanceOf(vault.address) == amount
 
     # harvest
-    strategy.harvest()
+    chain.sleep(1)
+    strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()
-    strategy.tend()
+    strategy.tend({"from": strategist})
 
     # withdrawal
-    vault.withdraw({"from": wbtc_whale})
+    vault.withdraw({"from": token_whale})
     assert (
-        pytest.approx(token.balanceOf(wbtc_whale), rel=RELATIVE_APPROX)
+        pytest.approx(token.balanceOf(token_whale), rel=RELATIVE_APPROX)
         == user_balance_before
     )
 
 
 def test_emergency_exit(
-    accounts, token, vault, strategy, wbtc_whale, strategist, RELATIVE_APPROX
+    token, vault, strategy, token_whale, strategist, RELATIVE_APPROX
 ):
     # Deposit to the vault
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
-    amount = 10 * 1e8
-    strategy.harvest()
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 500_000 * (10 ** token.decimals())
+
+    chain.sleep(1)
+    strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # set emergency and exit
-    strategy.setEmergencyExit()
-    strategy.harvest()
+    strategy.setEmergencyExit({"from": strategist})
+    strategy.harvest({"from": strategist})
     assert strategy.estimatedTotalAssets() < amount
 
 
 def test_profitable_harvest(
-    accounts,
     token,
     vault,
     strategy,
-    wbtc_whale,
-    user,
+    token_whale,
     strategist,
     RELATIVE_APPROX,
     chain,
-    weth,
-    weth_whale,
-    yvETH,
+    borrow_token,
+    borrow_whale,
+    yvault,
 ):
     # Deposit to the vault
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
-    amount = 10 * 1e8
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+    amount = 500_000 * (10 ** token.decimals())
     assert token.balanceOf(vault.address) == amount
 
     # Harvest 1: Send funds through the strategy
-    strategy.harvest()
+    chain.sleep(1)
+    strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # increase rewards, lending interest and borrowing interests
     chain.sleep(50 * 24 * 3600)
     chain.mine(1)
 
-    strategy.harvest()  # to claim and start cooldown
+    strategy.harvest({"from": strategist})  # to claim and start cooldown
 
     chain.sleep(10 * 24 * 3600 + 1)  # sleep during cooldown
     chain.mine(1)
 
-    weth.transfer(yvETH, Wei("20_000 ether"), {"from": weth_whale})
+    borrow_token.transfer(yvault, yvault.totalAssets() * 0.005, {"from": borrow_whale})
     before_pps = vault.pricePerShare()
     # Harvest 2: Realize profit
-    strategy.harvest()
+    chain.sleep(1)
+    strategy.harvest({"from": strategist})
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
-    profit = token.balanceOf(vault.address)  # Profits go to vault
 
     assert vault.totalAssets() > amount
     assert vault.pricePerShare() > before_pps
 
 
 def test_change_debt(
-    gov, token, vault, wbtc_whale, strategy, user, strategist, RELATIVE_APPROX
+    gov, token, vault, token_whale, strategy, user, strategist, RELATIVE_APPROX
 ):
     # Deposit to the vault and harvest
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    strategy.harvest()
-    amount = 10 * 1e8
+
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
+    amount = 500_000 * (10 ** token.decimals())
     half = int(amount / 2)
 
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
-    strategy.harvest()
+    strategy.harvest({"from": gov})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # In order to pass this tests, you will need to implement prepareReturn.
@@ -114,36 +115,43 @@ def test_change_debt(
     # assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
-def test_sweep(gov, vault, strategy, token, wbtc_whale, user, weth_whale, weth):
+def test_sweep(gov, vault, strategy, token, token_whale, borrow_whale, borrow_token):
     # Strategy want token doesn't work
-    token.transfer(strategy, 10e8, {"from": wbtc_whale})
+    token.transfer(strategy, 500_000 * (10 ** token.decimals()), {"from": token_whale})
     assert token.address == strategy.want()
     assert token.balanceOf(strategy) > 0
-    with brownie.reverts("!want"):
+    with reverts("!want"):
         strategy.sweep(token, {"from": gov})
 
     # Vault share token doesn't work
-    with brownie.reverts("!shares"):
+    with reverts("!shares"):
         strategy.sweep(vault.address, {"from": gov})
 
     # TODO: If you add protected tokens to the strategy.
     # Protected token doesn't work
-    # with brownie.reverts("!protected"):
+    # with reverts("!protected"):
     #     strategy.sweep(strategy.protectedToken(), {"from": gov})
 
-    before_balance = weth.balanceOf(gov)
-    weth.transfer(strategy, Wei("1 ether"), {"from": weth_whale})
-    assert weth.address != strategy.want()
-    strategy.sweep(weth, {"from": gov})
-    assert weth.balanceOf(gov) == Wei("1 ether") + before_balance
+    before_balance = borrow_token.balanceOf(gov)
+    borrow_token.transfer(
+        strategy, 1 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    assert borrow_token.address != strategy.want()
+    strategy.sweep(borrow_token, {"from": gov})
+    assert (
+        borrow_token.balanceOf(gov)
+        == 1 * (10 ** borrow_token.decimals()) + before_balance
+    )
 
 
-def test_triggers(gov, vault, strategy, wbtc_whale, token, user, weth, strategist):
+def test_triggers(gov, vault, strategy, token_whale, token):
     # Deposit to the vault and harvest
-    token.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    strategy.harvest()
+
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
 
     strategy.harvestTrigger(0)
     strategy.tendTrigger(0)

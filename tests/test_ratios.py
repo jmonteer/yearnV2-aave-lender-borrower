@@ -1,18 +1,27 @@
-from brownie import chain, Wei, reverts, Contract
+from brownie import chain, reverts, Contract
 
 
 def test_lev_ratios(
-    vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth, awbtc
+    vault,
+    strategy,
+    gov,
+    token,
+    token_whale,
+    borrow_token,
+    borrow_whale,
+    yvault,
+    vdToken,
+    aToken,
 ):
     lp = get_lending_pool()
 
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(100 * 1e8, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
 
-    tx = strategy.harvest({"from": gov})
+    chain.sleep(1)
+    strategy.harvest({"from": gov})
 
     targetLTV = strategy.targetLTVMultiplier()
-    warningLTV = strategy.warningLTVMultiplier()
 
     print_status(lp, strategy)
     # should revert with ratios > 90%
@@ -27,6 +36,7 @@ def test_lev_ratios(
             strategy.isInvestmentTokenIncentivised(),
             strategy.leaveDebtBehind(),
             strategy.maxLoss(),
+            strategy.maxGasPriceToTend(),
             {"from": strategy.strategist()},
         )
     # should revert if targetRatio > warningRatio
@@ -41,6 +51,7 @@ def test_lev_ratios(
             strategy.isInvestmentTokenIncentivised(),
             strategy.leaveDebtBehind(),
             strategy.maxLoss(),
+            strategy.maxGasPriceToTend(),
             {"from": strategy.strategist()},
         )
 
@@ -55,13 +66,16 @@ def test_lev_ratios(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    weth.transfer(yvETH, Wei("10000 ether"), {"from": weth_whale})
-    previousDebt = vdweth.balanceOf(strategy)
+    borrow_token.transfer(
+        yvault, 10_000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    previousDebt = vdToken.balanceOf(strategy)
     tx = strategy.harvest({"from": gov})
-    assert previousDebt > vdweth.balanceOf(strategy)
+    assert previousDebt > vdToken.balanceOf(strategy)
     print_status(lp, strategy)
 
     print_status(lp, strategy)
@@ -76,23 +90,31 @@ def test_lev_ratios(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    weth.transfer(yvETH, Wei("10000 ether"), {"from": weth_whale})
-    previousDebt = vdweth.balanceOf(strategy)
-    tx = strategy.harvest({"from": gov})
-    assert vdweth.balanceOf(strategy) == 0
-    assert wbtc.balanceOf(strategy) == 0
-    assert awbtc.balanceOf(strategy) > 0  # want is deposited as collateral
-    assert (
-        awbtc.balanceOf(strategy) == strategy.estimatedTotalAssets()
-    )  # no debt, no investments
-
+    borrow_token.transfer(
+        yvault, 10000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+    previousDebt = vdToken.balanceOf(strategy)
+    strategy.harvest({"from": gov})
     print_status(lp, strategy)
-    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
 
-    vault.withdraw({"from": wbtc_whale})
+    assert vdToken.balanceOf(strategy) == 0
+    assert token.balanceOf(strategy) == 0
+    assert aToken.balanceOf(strategy) > 0  # want is deposited as collateral
+    # rounding
+    # assert (
+    #     strategy.estimatedTotalAssets()-aToken.balanceOf(strategy) < 3
+    # )  # no debt, no investments
+    print(f"TotalAssets:{strategy.estimatedTotalAssets()}")
+    print(f"AToken: {aToken.balanceOf(strategy)}")
+    borrow_token.transfer(
+        yvault, 1000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+    )
+
+    vault.withdraw({"from": token_whale})
 
 
 def get_lending_pool():

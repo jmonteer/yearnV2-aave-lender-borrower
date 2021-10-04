@@ -2,23 +2,42 @@ from brownie import chain, Wei, reverts, Contract
 
 
 def test_increase_costs(
-    vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH, vdweth, awbtc
+    vault,
+    strategy,
+    gov,
+    token,
+    token_whale,
+    borrow_token,
+    borrow_whale,
+    yvault,
+    vdToken,
+    aToken,
+    AaveLibrary,
 ):
-    deposit_amount = 10 * 1e8
+    if token.symbol() == "WETH":
+        deposit_amount = 500 * (10 ** token.decimals())
+    elif token.symbol() == "WBTC":
+        deposit_amount = 50 * (10 ** token.decimals())
+    elif token.symbol() == "DAI" or token.symbol() == "USDC":
+        deposit_amount = 1_000_000 * (10 ** token.decimals())
+    else:
+        deposit_amount = 100 * (10 ** token.decimals())
+
     assert vault.totalAssets() == 0
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(deposit_amount, {"from": wbtc_whale})
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(deposit_amount, {"from": token_whale})
     # whale has deposited 10btc in fixture
     lp = get_lending_pool()
 
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
     chain.sleep(6 * 3600)
     chain.mine(1)
 
     # instead of increasing costs we reduce our acceptable costs
-    currentCost = lp.getReserveData(weth).dict()["currentVariableBorrowRate"]
+    currentCost = lp.getReserveData(borrow_token).dict()["currentVariableBorrowRate"]
     # put acceptablecosts just below currentCost
-    acceptable = currentCost - 1e21
+    acceptable = currentCost - 1e18
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -30,19 +49,40 @@ def test_increase_costs(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
     # to offset interest rates and be able to repay full debt (assuming we were able to generate profit before lowering acceptableCosts)
-    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
+    # to compensate interest rate on borrowing
+    if (
+        borrow_token.symbol() == "USDT"
+        or borrow_token.symbol() == "USDC"
+        or borrow_token.symbol() == "DAI"
+        or borrow_token.symbol() == "sUSD"
+    ):
+        borrow_token.transfer(
+            yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    else:
+        borrow_token.transfer(
+            yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    previousDebt = vdToken.balanceOf(strategy)
 
-    previousDebt = vdweth.balanceOf(strategy)
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
-    assert previousDebt > vdweth.balanceOf(strategy)
+    assert previousDebt > vdToken.balanceOf(strategy)
+
+    d = AaveLibrary.calcMaxDebt(borrow_token, strategy.acceptableCostsRay()).dict()
+    currentDebt = d["currentProtocolDebt"]
+    maxDebt = d["maxProtocolDebt"]
 
     assert (
-        lp.getReserveData(weth).dict()["currentVariableBorrowRate"]
+        lp.getReserveData(borrow_token).dict()["currentVariableBorrowRate"]
         < strategy.acceptableCostsRay()
     )
+    # checking that we are repaying more than strictly required (assuming that part of it comes from AaveLending)
+    assert tx.events["RepayDebt"]["repayAmount"] > currentDebt - (maxDebt)
 
     strategy.setStrategyParams(
         strategy.targetLTVMultiplier(),
@@ -54,15 +94,30 @@ def test_increase_costs(
         strategy.isInvestmentTokenIncentivised(),
         strategy.leaveDebtBehind(),
         strategy.maxLoss(),
+        strategy.maxGasPriceToTend(),
         {"from": strategy.strategist()},
     )
 
     # to compensate interest rate on borrowing
-    weth.transfer(yvETH, Wei("1 ether"), {"from": weth_whale})
-    previousDebt = vdweth.balanceOf(strategy)
+    if (
+        borrow_token.symbol() == "USDT"
+        or borrow_token.symbol() == "USDC"
+        or borrow_token.symbol() == "DAI"
+        or borrow_token.symbol() == "sUSD"
+    ):
+        borrow_token.transfer(
+            yvault, 25000 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    else:
+        borrow_token.transfer(
+            yvault, 10 * (10 ** borrow_token.decimals()), {"from": borrow_whale}
+        )
+    previousDebt = vdToken.balanceOf(strategy)
+
+    chain.sleep(1)
     tx = strategy.harvest({"from": gov})
-    assert previousDebt > vdweth.balanceOf(strategy)
-    assert vdweth.balanceOf(strategy) == 0
+    assert previousDebt > vdToken.balanceOf(strategy)
+    assert vdToken.balanceOf(strategy) == 0
 
 
 def get_lending_pool():

@@ -1,19 +1,21 @@
 import pytest
-from brownie import chain, Wei, Contract
+from brownie import chain, Contract
 
 
-def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvETH):
-    prev_balance = wbtc.balanceOf(wbtc_whale)
-    wbtc.approve(vault, 2 ** 256 - 1, {"from": wbtc_whale})
-    vault.deposit(10 * 1e8, {"from": wbtc_whale})
+def test_huge_debt(vault, strategy, gov, token, token_whale):
+    prev_balance = token.balanceOf(token_whale)
+    token.approve(vault, 2 ** 256 - 1, {"from": token_whale})
+    vault.deposit(500_000 * (10 ** token.decimals()), {"from": token_whale})
+
+    chain.sleep(1)
     strategy.harvest({"from": gov})
     lp = get_lending_pool()
 
     prev_debt = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
     print(f"T=0 totalDebtETH: {prev_debt}")
 
-    # After first investment sleep for aproximately a year
-    chain.sleep(60 * 60 * 24 * 365)
+    # After first investment sleep for aproximately a month
+    chain.sleep(60 * 60 * 24 * 30)
     chain.mine(1)
     new_debt = lp.getUserAccountData(strategy).dict()["totalDebtETH"]
     print(f"T=365 totalDebtETH: {new_debt}")
@@ -24,11 +26,12 @@ def test_huge_debt(vault, strategy, gov, wbtc, wbtc_whale, weth, weth_whale, yvE
     assert vault.strategies(strategy).dict()["totalLoss"] == 0
 
     vault.withdraw(
-        vault.balanceOf(wbtc_whale), wbtc_whale, 10_000, {"from": wbtc_whale}
+        vault.balanceOf(token_whale), token_whale, 10_000, {"from": token_whale}
     )
 
-    print(f"diff {prev_balance-wbtc.balanceOf(wbtc_whale)}")
-    assert prev_balance - wbtc.balanceOf(wbtc_whale) > 0
+    # we are currently in a profitable scenario so there is no loss
+    print(f"diff {prev_balance-token.balanceOf(token_whale)}")
+    assert token.balanceOf(token_whale) - prev_balance > 0
 
 
 def get_lending_pool():

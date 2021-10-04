@@ -13,11 +13,11 @@ import {
     Address
 } from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "./WadRayMath.sol";
+import "./libraries/AaveLenderBorrowerLib.sol";
 
 import "./interfaces/ISwap.sol";
 import "./interfaces/IVault.sol";
 import "./interfaces/aave/IAToken.sol";
-import "./libraries/SupportStructs.sol";
 import "./interfaces/IOptionalERC20.sol";
 import "./interfaces/aave/IStakedAave.sol";
 import "./interfaces/aave/IPriceOracle.sol";
@@ -33,10 +33,9 @@ contract Strategy is BaseStrategy {
     using SafeMath for uint256;
     using WadRayMath for uint256;
 
-    bool internal isOriginal = true;
     // max interest rate we can afford to pay for borrowing investment token
     // amount in Ray (1e27 = 100%)
-    uint256 public acceptableCostsRay = 1e27;
+    uint256 public acceptableCostsRay = WadRayMath.RAY;
 
     // max amount to borrow. used to manually limit amount (for yVault to keep APY)
     uint256 public maxTotalBorrowIT;
@@ -67,35 +66,35 @@ contract Strategy is BaseStrategy {
     IVault public yVault;
     IERC20 internal investmentToken;
 
-    ISwap internal constant router =
-        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    ISwap public router;
 
     IStakedAave internal constant stkAave =
         IStakedAave(0x4da27a545c0c5B758a6BA100e3a049001de870f5);
 
-    IProtocolDataProvider internal constant protocolDataProvider =
-        IProtocolDataProvider(0x057835Ad21a177dbdd3090bB1CAE03EaCF78Fc6d);
-
     address internal constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
 
+    // SushiSwap router
+    ISwap internal constant sushiswapRouter =
+        ISwap(0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F);
+
+    // Uniswap router
+    ISwap internal constant uniswapRouter =
+        ISwap(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+
     uint256 internal minThreshold;
     uint256 public maxLoss;
+    uint256 public maxGasPriceToTend;
     string internal strategyName;
+
+    event RepayDebt(uint256 repayAmount, uint256 previousDebtBalance);
 
     constructor(
         address _vault,
         address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public BaseStrategy(_vault) {
-        _initializeThis(
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
+        _initializeThis(_yVault, _strategyName);
     }
 
     // ----------------- PUBLIC VIEW FUNCTIONS -----------------
@@ -134,8 +133,9 @@ contract Strategy is BaseStrategy {
         bool _isWantIncentivised,
         bool _isInvestmentTokenIncentivised,
         bool _leaveDebtBehind,
-        uint256 _maxLoss
-    ) external onlyAuthorized {
+        uint256 _maxLoss,
+        uint256 _maxGasPriceToTend
+    ) external onlyEmergencyAuthorized {
         require(
             _warningLTVMultiplier <= MAX_MULTIPLIER &&
                 _targetLTVMultiplier <= _warningLTVMultiplier
@@ -148,106 +148,60 @@ contract Strategy is BaseStrategy {
         isWantIncentivised = _isWantIncentivised;
         isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
         leaveDebtBehind = _leaveDebtBehind;
-        require(maxLoss <= 10_000);
+        maxGasPriceToTend = _maxGasPriceToTend;
+
+        require(_maxLoss <= 10_000);
         maxLoss = _maxLoss;
     }
 
-    event Cloned(address indexed clone);
-
-    function cloneAaveLenderBorrower(
-        address _vault,
-        address _strategist,
-        address _rewards,
-        address _keeper,
-        address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
-        string memory _strategyName
-    ) external returns (address newStrategy) {
-        require(isOriginal);
-        // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
-        bytes20 addressBytes = bytes20(address(this));
-        assembly {
-            // EIP-1167 bytecode
-            let clone_code := mload(0x40)
-            mstore(
-                clone_code,
-                0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000
-            )
-            mstore(add(clone_code, 0x14), addressBytes)
-            mstore(
-                add(clone_code, 0x28),
-                0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000
-            )
-            newStrategy := create(0, clone_code, 0x37)
+    // Allow switching between Uniswap and SushiSwap
+    function switchDex(bool isUniswap) external onlyVaultManagers {
+        if (isUniswap) {
+            router = uniswapRouter;
+        } else {
+            router = sushiswapRouter;
         }
-
-        Strategy(newStrategy).initialize(
-            _vault,
-            _strategist,
-            _rewards,
-            _keeper,
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
-
-        emit Cloned(newStrategy);
     }
 
-    function _initializeThis(
-        address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
-        string memory _strategyName
-    ) internal {
-        minReportDelay = 24 * 3600;
-        maxReportDelay = 10 * 24 * 3600;
-        profitFactor = 100;
-        // debtThreshold = 0; It's 0 by default.
+    function _initializeThis(address _yVault, string memory _strategyName)
+        internal
+    {
+        // Make sure we only initialize one time
+        require(address(yVault) == address(0)); // dev: strategy already initialized
 
         yVault = IVault(_yVault);
         investmentToken = IERC20(IVault(_yVault).token());
-
         (address _aToken, , ) =
-            protocolDataProvider.getReserveTokensAddresses(address(want));
+            _protocolDataProvider().getReserveTokensAddresses(address(want));
         aToken = IAToken(_aToken);
-
         (, , address _variableDebtToken) =
-            protocolDataProvider.getReserveTokensAddresses(
+            _protocolDataProvider().getReserveTokensAddresses(
                 address(investmentToken)
             );
 
         variableDebtToken = IVariableDebtToken(_variableDebtToken);
         minThreshold = (10**(yVault.decimals())).div(100); // 0.01 minThreshold
-        isWantIncentivised = _isWantIncentivised;
-        isInvestmentTokenIncentivised = _isInvestmentTokenIncentivised;
 
-        maxTotalBorrowIT = type(uint256).max; // set to max to avoid limits. this may trigger revert in some parts if not correctly handled
+        // Set default router to SushiSwap
+        router = sushiswapRouter;
 
-        maxLoss = 1;
         strategyName = _strategyName;
+
+        // Set health check to health.ychad.eth
+        healthCheck = 0xDDCea799fF1699e98EDF118e0629A974Df7DF012;
     }
 
     function initialize(
         address _vault,
-        address _strategist,
-        address _rewards,
-        address _keeper,
         address _yVault,
-        bool _isWantIncentivised,
-        bool _isInvestmentTokenIncentivised,
         string memory _strategyName
     ) public {
-        _initialize(_vault, _strategist, _rewards, _keeper);
-        require(address(yVault) == address(0));
-        _initializeThis(
-            _yVault,
-            _isWantIncentivised,
-            _isInvestmentTokenIncentivised,
-            _strategyName
-        );
+        // Make sure we only initialize one time
+        require(address(yVault) == address(0)); // dev: strategy already initialized
+
+        address sender = msg.sender;
+        _initialize(_vault, sender, sender, sender);
+        _initializeThis(_yVault, _strategyName);
     }
 
     // ----------------- MAIN STRATEGY FUNCTIONS -----------------
@@ -260,30 +214,40 @@ contract Strategy is BaseStrategy {
             uint256 _debtPayment
         )
     {
-        uint256 balanceInit = balanceOfWant();
+        uint256 totalDebt = vault.strategies(address(this)).totalDebt;
+
         // claim rewards from Aave's Liquidity Mining Program
         _claimRewards();
 
         // claim rewards from yVault
         _takeVaultProfit();
 
-        // claim interest from lending
-        _takeLendingProfit();
+        uint256 totalAssetsAfterProfit = estimatedTotalAssets();
 
-        uint256 balanceOfWant = balanceOfWant();
+        _profit = totalAssetsAfterProfit > totalDebt
+            ? totalAssetsAfterProfit.sub(totalDebt)
+            : 0;
 
-        if (balanceOfWant > balanceInit) {
-            _profit = balanceOfWant.sub(balanceInit);
-        }
+        uint256 _amountFreed;
+        (_amountFreed, _loss) = liquidatePosition(
+            _debtOutstanding.add(_profit)
+        );
+        _debtPayment = Math.min(_debtOutstanding, _amountFreed);
 
-        // if the vault is claiming repayment of debt
-        if (_debtOutstanding > 0) {
-            uint256 _amountFreed = 0;
-            (_amountFreed, _loss) = liquidatePosition(_debtOutstanding);
-            _debtPayment = Math.min(_debtOutstanding, _amountFreed);
-            if (_loss > 0) {
-                _profit = 0;
-            }
+        if (_loss > _profit) {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 100, _loss 50
+            // loss should be 0, (50-50)
+            // profit should endup in 0
+            _loss = _loss.sub(_profit);
+            _profit = 0;
+        } else {
+            // Example:
+            // debtOutstanding 100, profit 50, _amountFreed 140, _loss 10
+            // _profit should be 40, (50 profit - 10 loss)
+            // loss should end up in be 0
+            _profit = _profit.sub(_loss);
+            _loss = 0;
         }
     }
 
@@ -327,8 +291,15 @@ contract Strategy is BaseStrategy {
         // currentProtocolDebt => total amount of debt taken by all Aave's borrowers
         // maxProtocolDebt => amount of total debt at which the cost of capital is equal to our acceptable costs
         // if the current protocol debt is higher than the max protocol debt, we will repay debt
-        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
-            _calculateMaxDebt();
+        (
+            uint256 currentProtocolDebt,
+            uint256 maxProtocolDebt,
+            uint256 targetUtilisationRay
+        ) =
+            AaveLenderBorrowerLib.calcMaxDebt(
+                address(investmentToken),
+                acceptableCostsRay
+            );
 
         if (targetLTV > currentLTV && currentProtocolDebt < maxProtocolDebt) {
             // SUBOPTIMAL RATIO: our current Loan-to-Value is lower than what we want
@@ -372,8 +343,6 @@ contract Strategy is BaseStrategy {
                     address(this)
                 );
             }
-
-            _depositInYVault();
         } else if (
             currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt
         ) {
@@ -390,17 +359,48 @@ contract Strategy is BaseStrategy {
             if (maxProtocolDebt == 0) {
                 amountToRepayETH = totalDebtETH;
             } else if (currentProtocolDebt > maxProtocolDebt) {
+                // NOTE: take into account that we are withdrawing from yvVault which might have a GenLender lending to Aave
+                // REPAY = (currentProtocolDebt - maxProtocolDebt) / (1 - TargetUtilisation)
+                // coming from
+                // TargetUtilisation = (totalDebt - REPAY) / (currentLiquidity - REPAY)
+                // currentLiquidity = maxProtocolDebt / TargetUtilisation
+
+                uint256 iterativeRepayAmountETH =
+                    currentProtocolDebt
+                        .sub(maxProtocolDebt)
+                        .mul(WadRayMath.RAY)
+                        .div(uint256(WadRayMath.RAY).sub(targetUtilisationRay));
                 amountToRepayETH = Math.max(
                     amountToRepayETH,
-                    currentProtocolDebt.sub(maxProtocolDebt)
+                    iterativeRepayAmountETH
                 );
             }
+            emit RepayDebt(amountToRepayETH, totalDebtETH);
 
             uint256 amountToRepayIT =
                 _fromETH(amountToRepayETH, address(investmentToken));
             uint256 withdrawnIT = _withdrawFromYVault(amountToRepayIT); // we withdraw from investmentToken vault
             _repayInvestmentTokenDebt(withdrawnIT); // we repay the investmentToken debt with Aave
         }
+
+        uint256 balanceIT = balanceOfInvestmentToken();
+        if (balanceIT > 0) {
+            _checkAllowance(
+                address(yVault),
+                address(investmentToken),
+                balanceIT
+            );
+
+            yVault.deposit();
+        }
+    }
+
+    function liquidateAllPositions()
+        internal
+        override
+        returns (uint256 _amountFreed)
+    {
+        (_amountFreed, ) = liquidatePosition(estimatedTotalAssets());
     }
 
     function liquidatePosition(uint256 _amountNeeded)
@@ -413,7 +413,6 @@ contract Strategy is BaseStrategy {
         if (balance >= _amountNeeded) {
             return (_amountNeeded, 0);
         }
-
         // NOTE: amountNeeded is in want
         // NOTE: repayment amount is in investmentToken
         // NOTE: collateral and debt calcs are done in ETH (always, see Aave docs)
@@ -491,7 +490,6 @@ contract Strategy is BaseStrategy {
         // we adjust position if:
         // 1. LTV ratios are not in the HEALTHY range (either we take on more debt or repay debt)
         // 2. costs are not acceptable and we need to repay debt
-
         (
             uint256 totalCollateralETH,
             uint256 totalDebtETH,
@@ -501,23 +499,24 @@ contract Strategy is BaseStrategy {
 
         ) = _getAaveUserAccountData();
 
-        uint256 currentLTV = totalDebtETH.mul(MAX_BPS).div(totalCollateralETH);
-        uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
-        uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-        (uint256 currentProtocolDebt, uint256 maxProtocolDebt) =
-            _calculateMaxDebt();
-
-        if (
-            (currentLTV < targetLTV &&
-                currentProtocolDebt < maxProtocolDebt &&
-                targetLTV.sub(currentLTV) > 100) || // WE NEED TO TAKE ON MORE DEBT
-            (currentLTV > warningLTV || currentProtocolDebt > maxProtocolDebt) // WE NEED TO REPAY DEBT BECAUSE OF UNHEALTHY RATIO OR BORROWING COSTS
-        ) {
-            return true;
+        // Nothing to rebalance if we do not have collateral locked
+        if (totalCollateralETH == 0) {
+            return false;
         }
 
-        // no call to super.tendTrigger as it would return false
-        return false;
+        uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
+        uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
+
+        return
+            AaveLenderBorrowerLib.shouldRebalance(
+                address(investmentToken),
+                acceptableCostsRay,
+                targetLTV,
+                warningLTV,
+                totalCollateralETH,
+                totalDebtETH,
+                maxGasPriceToTend
+            );
     }
 
     // ----------------- INTERNAL FUNCTIONS SUPPORT -----------------
@@ -533,6 +532,9 @@ contract Strategy is BaseStrategy {
                 _investmentTokenToYShares(_amountIT),
                 yVault.balanceOf(address(this))
             );
+        if (sharesToWithdraw == 0) {
+            return 0;
+        }
         yVault.withdraw(sharesToWithdraw, address(this), maxLoss);
         return balanceOfInvestmentToken().sub(balancePrior);
     }
@@ -543,10 +545,9 @@ contract Strategy is BaseStrategy {
         }
 
         // we cannot pay more than loose balance
-        uint256 balance = balanceOfInvestmentToken();
-        amount = Math.min(amount, balance);
+        amount = Math.min(amount, balanceOfInvestmentToken());
         // we cannot pay more than we owe
-        amount = Math.min(balanceOfDebt(), amount);
+        amount = Math.min(amount, balanceOfDebt());
 
         _checkAllowance(
             address(_lendingPool()),
@@ -564,23 +565,12 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _depositInYVault() internal {
-        uint256 balanceIT = balanceOfInvestmentToken();
-        if (balanceIT > 0) {
-            _checkAllowance(
-                address(yVault),
-                address(investmentToken),
-                balanceIT
-            );
-            yVault.deposit();
-        }
-    }
-
     function _claimRewards() internal {
         if (isInvestmentTokenIncentivised || isWantIncentivised) {
             // redeem AAVE from stkAave
             uint256 stkAaveBalance =
                 IERC20(address(stkAave)).balanceOf(address(this));
+
             if (stkAaveBalance > 0 && _checkCooldown()) {
                 // claim AAVE rewards
                 stkAave.claimRewards(address(this), type(uint256).max);
@@ -591,7 +581,7 @@ contract Strategy is BaseStrategy {
             // a minimum balance of 0.01 AAVE is required
             uint256 aaveBalance = IERC20(AAVE).balanceOf(address(this));
             if (aaveBalance > 1e15) {
-                _sellAAVEForWant(aaveBalance);
+                _sellAForB(aaveBalance, address(AAVE), address(want));
             }
 
             // claim rewards
@@ -617,24 +607,19 @@ contract Strategy is BaseStrategy {
 
             // request start of cooldown period
             uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
+                IStakedAave(stkAave).stakersCooldowns(address(this));
             uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
             uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
-            if (IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
-                (cooldownStartTimestamp == 0) ||
-                block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW)) {
+            if (
+                IERC20(address(stkAave)).balanceOf(address(this)) > 0 &&
+                (cooldownStartTimestamp == 0 ||
+                    block.timestamp >
+                    cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(
+                        UNSTAKE_WINDOW
+                    ))
+            ) {
                 stkAave.cooldown();
             }
-        }
-    }
-
-    function _takeLendingProfit() internal {
-        uint256 depositedWant = vault.strategies(address(this)).totalDebt;
-        uint256 currentWantInAave = balanceOfAToken();
-
-        if (currentWantInAave > depositedWant) {
-            uint256 toWithdraw = currentWantInAave.sub(depositedWant);
-            _withdrawWantFromAave(toWithdraw);
         }
     }
 
@@ -679,7 +664,6 @@ contract Strategy is BaseStrategy {
         if (amount == 0) {
             return 0;
         }
-
         // we check if the collateral that we are withdrawing leaves us in a risky range, we then take action
         (
             uint256 totalCollateralETH,
@@ -689,48 +673,18 @@ contract Strategy is BaseStrategy {
             ,
 
         ) = _getAaveUserAccountData();
-
-        uint256 amountToWithdrawETH = _toETH(amount, address(want));
-        // calculate the collateral that we are leaving after withdrawing
-        uint256 newCollateral =
-            totalCollateralETH > amountToWithdrawETH
-                ? totalCollateralETH.sub(amountToWithdrawETH)
-                : 0;
-
-        uint256 ltvAfterWithdrawal =
-            newCollateral > 0
-                ? totalDebtETH.mul(MAX_BPS).div(newCollateral)
-                : type(uint256).max;
-
-        // check if the new LTV is in UNHEALTHY range
-        // remember that if balance > _amountNeeded, ltvAfterWithdrawal == 0 (0 risk)
-        // this is not true but the effect will be the same
         uint256 warningLTV = _getWarningLTV(currentLiquidationThreshold);
-
-        if (ltvAfterWithdrawal <= warningLTV) {
-            // no need of repaying debt because the LTV is ok
-            return 0;
-        } else if (ltvAfterWithdrawal == type(uint256).max) {
-            // we are withdrawing 100% of collateral so we need to repay full debt
-            return _fromETH(totalDebtETH, address(investmentToken));
-        }
-
         uint256 targetLTV = _getTargetLTV(currentLiquidationThreshold);
-        // WARNING: this only works for a single collateral asset, otherwise liquidationThreshold might change depending on the collateral being withdrawn
-        // e.g. we have USDC + WBTC as collateral, end liquidationThreshold will be different depending on which asset we withdraw
-        uint256 newTargetDebt = targetLTV.mul(newCollateral).div(MAX_BPS);
-
-        // if newTargetDebt is higher, we don't need to repay anything
-        if (newTargetDebt > totalDebtETH) {
-            return 0;
-        }
-
+        uint256 amountETH = _toETH(amount, address(want));
         return
-            _fromETH(
-                totalDebtETH.sub(newTargetDebt) < minThreshold
-                    ? totalDebtETH
-                    : totalDebtETH.sub(newTargetDebt),
-                address(investmentToken)
+            AaveLenderBorrowerLib.calculateAmountToRepay(
+                amountETH,
+                totalCollateralETH,
+                totalDebtETH,
+                warningLTV,
+                targetLTV,
+                address(investmentToken),
+                minThreshold
             );
     }
 
@@ -745,18 +699,12 @@ contract Strategy is BaseStrategy {
     }
 
     function _checkCooldown() internal view returns (bool) {
-        if (!isWantIncentivised && !isInvestmentTokenIncentivised) {
-            return false;
-        }
-
-        uint256 cooldownStartTimestamp =
-            IStakedAave(stkAave).stakersCooldowns(address(this));
-        uint256 COOLDOWN_SECONDS = IStakedAave(stkAave).COOLDOWN_SECONDS();
-        uint256 UNSTAKE_WINDOW = IStakedAave(stkAave).UNSTAKE_WINDOW();
         return
-            cooldownStartTimestamp != 0 &&
-            block.timestamp > cooldownStartTimestamp.add(COOLDOWN_SECONDS) &&
-            block.timestamp <= cooldownStartTimestamp.add(COOLDOWN_SECONDS).add(UNSTAKE_WINDOW);
+            AaveLenderBorrowerLib.checkCooldown(
+                isWantIncentivised,
+                isInvestmentTokenIncentivised,
+                address(stkAave)
+            );
     }
 
     function _checkAllowance(
@@ -781,98 +729,15 @@ contract Strategy is BaseStrategy {
         uint256 ySharesToWithdraw = _investmentTokenToYShares(profit);
         if (ySharesToWithdraw > 0) {
             yVault.withdraw(ySharesToWithdraw, address(this), maxLoss);
-            _sellInvestmentForWant(balanceOfInvestmentToken());
+            _sellAForB(
+                balanceOfInvestmentToken(),
+                address(investmentToken),
+                address(want)
+            );
         }
     }
 
     // ----------------- INTERNAL CALCS -----------------
-    function _calculateMaxDebt()
-        internal
-        view
-        returns (uint256 currentProtocolDebt, uint256 maxProtocolDebt)
-    {
-        // This function is used to calculate the maximum amount of debt that the protocol can take
-        // to keep the cost of capital lower than the set acceptableCosts
-        // This maxProtocolDebt will be used to decide if capital costs are acceptable or not
-        // and to repay required debt to keep the rates below acceptable costs
-
-        // Hack to avoid the stack too deep compiler error.
-        SupportStructs.CalcMaxDebtLocalVars memory vars;
-        DataTypes.ReserveData memory reserveData =
-            _lendingPool().getReserveData(address(investmentToken));
-        IReserveInterestRateStrategy irs =
-            IReserveInterestRateStrategy(
-                reserveData.interestRateStrategyAddress
-            );
-
-        (
-            vars.availableLiquidity, // = total supply - total stable debt - total variable debt
-            vars.totalStableDebt, // total debt paying stable interest rates
-            vars.totalVariableDebt, // total debt paying stable variable rates
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-
-        ) = protocolDataProvider.getReserveData(address(investmentToken));
-
-        vars.totalDebt = vars.totalStableDebt.add(vars.totalVariableDebt);
-        vars.totalLiquidity = vars.availableLiquidity.add(vars.totalDebt);
-        vars.utilizationRate = vars.totalDebt == 0
-            ? 0
-            : vars.totalDebt.rayDiv(vars.totalLiquidity);
-
-        // Aave's Interest Rate Strategy Parameters (see docs)
-        SupportStructs.IrsVars memory irsVars;
-        irsVars.optimalRate = irs.OPTIMAL_UTILIZATION_RATE();
-        irsVars.baseRate = irs.baseVariableBorrowRate(); // minimum cost of capital with 0 % of utilisation rate
-        irsVars.slope1 = irs.variableRateSlope1(); // rate of increase of cost of debt up to Optimal Utilisation Rate
-        irsVars.slope2 = irs.variableRateSlope2(); // rate of increase of cost of debt above Optimal Utilisation Rate
-
-        // acceptableCosts should always be > baseVariableBorrowRate
-        // If it's not this will revert since the strategist set the wrong
-        // acceptableCosts value
-        if (
-            vars.utilizationRate < irsVars.optimalRate &&
-            acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)
-        ) {
-            // we solve Aave's Interest Rates equation for sub optimal utilisation rates
-            // IR = BASERATE + SLOPE1 * CURRENT_UTIL_RATE / OPTIMAL_UTIL_RATE
-            vars.targetUtilizationRate = (
-                acceptableCostsRay.sub(irsVars.baseRate)
-            )
-                .rayMul(irsVars.optimalRate)
-                .rayDiv(irsVars.slope1);
-        } else {
-            // Special case where protocol is above utilization rate but we want
-            // a lower interest rate than (base + slope1)
-            if (acceptableCostsRay < irsVars.baseRate.add(irsVars.slope1)) {
-                return (_toETH(vars.totalDebt, address(investmentToken)), 0);
-            }
-
-            // we solve Aave's Interest Rates equation for utilisation rates above optimal U
-            // IR = BASERATE + SLOPE1 + SLOPE2 * (CURRENT_UTIL_RATE - OPTIMAL_UTIL_RATE) / (1-OPTIMAL_UTIL_RATE)
-            vars.targetUtilizationRate = (
-                acceptableCostsRay.sub(irsVars.baseRate.add(irsVars.slope1))
-            )
-                .rayMul(uint256(1e27).sub(irsVars.optimalRate))
-                .rayDiv(irsVars.slope2)
-                .add(irsVars.optimalRate);
-        }
-
-        vars.maxProtocolDebt = vars
-            .totalLiquidity
-            .rayMul(vars.targetUtilizationRate)
-            .rayDiv(1e27);
-
-        return (
-            _toETH(vars.totalDebt, address(investmentToken)),
-            _toETH(vars.maxProtocolDebt, address(investmentToken))
-        );
-    }
-
     function balanceOfWant() internal view returns (uint256) {
         return want.balanceOf(address(this));
     }
@@ -958,47 +823,27 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellAAVEForWant(uint256 _amount) internal {
-        if (_amount == 0) {
+    function _sellAForB(
+        uint256 _amount,
+        address tokenA,
+        address tokenB
+    ) internal {
+        if (_amount == 0 || tokenA == tokenB) {
             return;
         }
 
-        _checkAllowance(address(router), address(AAVE), _amount);
+        _checkAllowance(address(router), tokenA, _amount);
         router.swapExactTokensForTokens(
             _amount,
             0,
-            getTokenOutPath(address(AAVE), address(want)),
-            address(this),
-            now
-        );
-    }
-
-    function _sellInvestmentForWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        // NOTE: 1:1
-        if (address(want) == address(investmentToken)) {
-            return;
-        }
-
-        _checkAllowance(address(router), address(investmentToken), _amount);
-        router.swapExactTokensForTokens(
-            _amount,
-            0,
-            getTokenOutPath(address(investmentToken), address(want)),
+            getTokenOutPath(tokenA, tokenB),
             address(this),
             now
         );
     }
 
     function _buyInvestmentTokenWithWant(uint256 _amount) internal {
-        if (_amount == 0) {
-            return;
-        }
-
-        if (address(investmentToken) == address(want)) {
+        if (_amount == 0 || address(investmentToken) == address(want)) {
             return;
         }
 
@@ -1024,11 +869,16 @@ contract Strategy is BaseStrategy {
         ) {
             return _amount;
         }
+        return AaveLenderBorrowerLib.toETH(_amount, asset);
+    }
 
-        return
-            _amount.mul(_priceOracle().getAssetPrice(asset)).div(
-                uint256(10)**uint256(IOptionalERC20(asset).decimals())
-            );
+    function ethToWant(uint256 _amtInWei)
+        public
+        view
+        override
+        returns (uint256)
+    {
+        return _fromETH(_amtInWei, address(want));
     }
 
     function _fromETH(uint256 _amount, address asset)
@@ -1043,26 +893,25 @@ contract Strategy is BaseStrategy {
         ) {
             return _amount;
         }
-
-        return
-            _amount
-                .mul(uint256(10)**uint256(IOptionalERC20(asset).decimals()))
-                .div(_priceOracle().getAssetPrice(asset));
+        return AaveLenderBorrowerLib.fromETH(_amount, asset);
     }
 
     // ----------------- INTERNAL SUPPORT GETTERS -----------------
 
     function _lendingPool() internal view returns (ILendingPool lendingPool) {
-        lendingPool = ILendingPool(
-            protocolDataProvider.ADDRESSES_PROVIDER().getLendingPool()
-        );
+        return AaveLenderBorrowerLib.lendingPool();
+    }
+
+    function _protocolDataProvider()
+        internal
+        view
+        returns (IProtocolDataProvider protocolDataProvider)
+    {
+        return AaveLenderBorrowerLib.protocolDataProvider;
     }
 
     function _priceOracle() internal view returns (IPriceOracle) {
-        return
-            IPriceOracle(
-                protocolDataProvider.ADDRESSES_PROVIDER().getPriceOracle()
-            );
+        return AaveLenderBorrowerLib.priceOracle();
     }
 
     function _incentivesController()
@@ -1070,13 +919,13 @@ contract Strategy is BaseStrategy {
         view
         returns (IAaveIncentivesController)
     {
-        if (isWantIncentivised) {
-            return aToken.getIncentivesController();
-        } else if (isInvestmentTokenIncentivised) {
-            return variableDebtToken.getIncentivesController();
-        } else {
-            return IAaveIncentivesController(0);
-        }
+        return
+            AaveLenderBorrowerLib.incentivesController(
+                aToken,
+                variableDebtToken,
+                isWantIncentivised,
+                isInvestmentTokenIncentivised
+            );
     }
 
     function protectedTokens()
